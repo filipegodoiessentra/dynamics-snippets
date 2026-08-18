@@ -17,25 +17,28 @@
             nome: "Pablo Silva",
             id: "67f1a84e-7471-f011-b4cc-000d3adb1307"
         },
-        "343": {
-            nome: "Cristina Felisbino",
-            id: "05d3a11a-5455-f111-bec6-000d3ab84f1f"
-        },
-        "344": {
-            nome: "Felipe Nunes",
-            id: "4c717f2b-2d4e-f111-bec7-000d3ab84162"
-        },
         "346": {
             nome: "Cristiana Roseto",
             id: "df619db6-3a77-eb11-a812-000d3adb5d0d"
         }
     };
 
+    const ATENDIMENTO_RR = [
+        {
+            nome: "Cristina Alves",
+            id: "2ad29448-518c-ef11-ac20-6045bddd9c93"
+        },
+        {
+            nome: "Lilian Lopes",
+            id: "d5ca6b9c-6350-f011-877b-000d3adf9cf8"
+        }
+    ];
+
     const REGEX_COTACAO =
-        /cotac|cotar|orcament/i;
+        /cotac|cotar|orcament|amostra|sample/i;
 
     const REGEX_ATENDIMENTO =
-        /atras|follow|pagament|boleto|amostra|sample/i;
+        /fup|follow|release|pedido de compra|novo pedido|posicao de entrega|posição de entrega|nota fiscal|\bnf\b|boleto/i;
 
     let processados = 0;
 
@@ -84,42 +87,68 @@
                     continue;
                 }
 
-                let deveRotear = false;
+                let vendedor = null;
 
-                // 335 e 337:
-                // Cotação + Orçamento + Atendimento
-                if (["335", "337"].includes(codigo)) {
+                // 335 = Lucimara sempre
+                if (codigo === "335") {
 
-                    deveRotear =
-                        REGEX_COTACAO.test(
-                            tituloNormalizado
-                        ) ||
-                        REGEX_ATENDIMENTO.test(
-                            tituloNormalizado
-                        );
+                    vendedor = VENDEDORES["335"];
 
                 }
 
-                // 338, 340, 343, 344 e 346:
-                // Somente Cotação / Orçamento
+                // 337 = Bruna sempre
+                else if (codigo === "337") {
+
+                    vendedor = VENDEDORES["337"];
+
+                }
+
+                // Cotação / Orçamento / Amostra
                 else if (
-                    ["338", "340", "343", "344", "346"]
+                    ["338", "340", "346"]
                         .includes(codigo)
                 ) {
 
-                    deveRotear =
+                    if (
                         REGEX_COTACAO.test(
                             tituloNormalizado
+                        )
+                    ) {
+
+                        vendedor =
+                            VENDEDORES[codigo];
+
+                    }
+
+                }
+
+                // Atendimento Comercial
+                else if (
+                    REGEX_ATENDIMENTO.test(
+                        tituloNormalizado
+                    )
+                ) {
+
+                    let indice =
+                        Number(
+                            localStorage.getItem(
+                                "rr_atendimento"
+                            ) || 0
                         );
 
-                }
+                    vendedor =
+                        ATENDIMENTO_RR[indice];
 
-                if (!deveRotear) {
-                    continue;
-                }
+                    indice =
+                        (indice + 1) %
+                        ATENDIMENTO_RR.length;
 
-                const vendedor =
-                    VENDEDORES[codigo];
+                    localStorage.setItem(
+                        "rr_atendimento",
+                        indice
+                    );
+
+                }
 
                 if (!vendedor) {
                     continue;
@@ -159,6 +188,10 @@
             }
 
         }
+
+        console.log(
+            `✅ ${processados} case(s) roteado(s)`
+        );
 
         alert(
             `${processados} case(s) roteado(s) com sucesso.`
