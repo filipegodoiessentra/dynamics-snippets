@@ -23,16 +23,14 @@
         }
     };
 
-    const ATENDIMENTO_RR = [
-        {
-            nome: "Cristina Alves",
-            id: "2ad29448-518c-ef11-ac20-6045bddd9c93"
-        },
-        {
-            nome: "Lilian Lopes",
-            id: "d5ca6b9c-6350-f011-877b-000d3adf9cf8"
-        }
-    ];
+    // TEMPORÁRIO
+    // Cristina Alves em férias
+    // Todo atendimento vai para Lilian Lopes
+
+    const LILIAN = {
+        nome: "Lilian Lopes",
+        id: "d5ca6b9c-6350-f011-877b-000d3adf9cf8"
+    };
 
     const REGEX_COTACAO =
         /cotac|cotar|orcament|amostra|sample/i;
@@ -129,24 +127,7 @@
                     )
                 ) {
 
-                    let indice =
-                        Number(
-                            localStorage.getItem(
-                                "rr_atendimento"
-                            ) || 0
-                        );
-
-                    vendedor =
-                        ATENDIMENTO_RR[indice];
-
-                    indice =
-                        (indice + 1) %
-                        ATENDIMENTO_RR.length;
-
-                    localStorage.setItem(
-                        "rr_atendimento",
-                        indice
-                    );
+                    vendedor = LILIAN;
 
                 }
 
