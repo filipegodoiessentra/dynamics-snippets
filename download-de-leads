@@ -1,48 +1,60 @@
-Xrm.WebApi.retrieveMultipleRecords(
-    "lead",
-    "?$filter=_campaignid_value eq f98d08d3-191e-f111-8341-000d3ab84eef"
-).then(result => {
+async function exportarLeadsBRV4() {
 
-    const rows = result.entities;
+    const campanha = "f98d08d3-191e-f111-8341-000d3ab84eef";
 
-    const headers = [
-        "fullname",
-        "companyname",
-        "emailaddress1",
-        "address1_city",
-        "address1_country",
-        "_ownerid_value@OData.Community.Display.V1.FormattedValue",
-        "_campaignid_value@OData.Community.Display.V1.FormattedValue",
-        "statuscode@OData.Community.Display.V1.FormattedValue",
-        "prioritycode@OData.Community.Display.V1.FormattedValue",
-        "createdon",
-        "modifiedon"
-    ];
+    const leadsResp = await Xrm.WebApi.retrieveMultipleRecords(
+        "lead",
+        `?$filter=_campaignid_value eq ${campanha}`
+    );
+
+    const linhas = [];
+
+    for (const lead of leadsResp.entities) {
+
+        let stage = "";
+
+        try {
+
+            const bpf = await Xrm.WebApi.retrieveMultipleRecords(
+                "new_bpf_698a878dafd64a32b4d5461408a8256a",
+                `?$filter=_bpf_leadid_value eq ${lead.leadid}`
+            );
+
+            if (bpf.entities.length) {
+                stage =
+                    bpf.entities[0]["_activestageid_value@OData.Community.Display.V1.FormattedValue"] || "";
+            }
+
+        } catch (e) {
+            console.log("Erro no lead", lead.fullname);
+        }
+
+        linhas.push({
+            Owner: lead["_ownerid_value@OData.Community.Display.V1.FormattedValue"] || "",
+            Name: lead.fullname || "",
+            Topic: lead.subject || "",
+            Company: lead.companyname || "",
+            City: lead.address1_city || "",
+            Country: lead.address1_country || "",
+            Priority: lead["prioritycode@OData.Community.Display.V1.FormattedValue"] || "",
+            Status: lead["statuscode@OData.Community.Display.V1.FormattedValue"] || "",
+            Campaign: lead["_campaignid_value@OData.Community.Display.V1.FormattedValue"] || "",
+            CreatedOn: lead["createdon@OData.Community.Display.V1.FormattedValue"] || "",
+            ModifiedOn: lead["modifiedon@OData.Community.Display.V1.FormattedValue"] || "",
+            Stage: stage
+        });
+
+        console.log(`Processado ${linhas.length} de ${leadsResp.entities.length}`);
+    }
+
+    const headers = Object.keys(linhas[0]);
 
     const csv = [
-        [
-            "Nome",
-            "Empresa",
-            "Email",
-            "Cidade",
-            "Pais",
-            "Owner",
-            "Campanha",
-            "Status",
-            "Prioridade",
-            "Criado Em",
-            "Modificado Em"
-        ].join(";"),
-
-        ...rows.map(row =>
-            headers.map(h => {
-                const valor = (row[h] || "")
-                    .toString()
-                    .replace(/\r?\n/g, " ")
-                    .replace(/"/g, '""');
-
-                return `"${valor}"`;
-            }).join(";")
+        headers.join(";"),
+        ...linhas.map(r =>
+            headers.map(h =>
+                `"${String(r[h] ?? "").replace(/"/g,'""')}"`
+            ).join(";")
         )
     ].join("\n");
 
@@ -53,8 +65,10 @@ Xrm.WebApi.retrieveMultipleRecords(
 
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "Campanha_472_Leads.csv";
+    a.download = "BR_V4_472_Leads_Com_Stage.csv";
     a.click();
 
-    console.log(`Exportados ${rows.length} leads`);
-});
+    console.log("Exportação concluída");
+}
+
+exportarLeadsBRV4();
