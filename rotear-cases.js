@@ -101,7 +101,7 @@
 
                 }
 
-                // Cotação / Orçamento / Amostra
+                // 338, 340 e 346
                 else if (
                     ["338", "340", "346"]
                         .includes(codigo)
@@ -117,6 +117,40 @@
                             VENDEDORES[codigo];
 
                     }
+
+                }
+
+                // 343 e 344
+                // Round Robin Matheus -> Pablo -> Cristiana
+                else if (
+                    ["343", "344"]
+                        .includes(codigo)
+                ) {
+
+                    let indice =
+                        Number(
+                            localStorage.getItem(
+                                "rr_cotacao_343_344"
+                            ) || 0
+                        );
+
+                    const FILA_COTACAO = [
+                        VENDEDORES["338"], // Matheus
+                        VENDEDORES["340"], // Pablo
+                        VENDEDORES["346"]  // Cristiana
+                    ];
+
+                    vendedor =
+                        FILA_COTACAO[indice];
+
+                    indice =
+                        (indice + 1) %
+                        FILA_COTACAO.length;
+
+                    localStorage.setItem(
+                        "rr_cotacao_343_344",
+                        indice
+                    );
 
                 }
 
