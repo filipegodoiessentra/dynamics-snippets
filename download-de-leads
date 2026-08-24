@@ -1,0 +1,60 @@
+Xrm.WebApi.retrieveMultipleRecords(
+    "lead",
+    "?$filter=_campaignid_value eq f98d08d3-191e-f111-8341-000d3ab84eef"
+).then(result => {
+
+    const rows = result.entities;
+
+    const headers = [
+        "fullname",
+        "companyname",
+        "emailaddress1",
+        "address1_city",
+        "address1_country",
+        "_ownerid_value@OData.Community.Display.V1.FormattedValue",
+        "_campaignid_value@OData.Community.Display.V1.FormattedValue",
+        "statuscode@OData.Community.Display.V1.FormattedValue",
+        "prioritycode@OData.Community.Display.V1.FormattedValue",
+        "createdon",
+        "modifiedon"
+    ];
+
+    const csv = [
+        [
+            "Nome",
+            "Empresa",
+            "Email",
+            "Cidade",
+            "Pais",
+            "Owner",
+            "Campanha",
+            "Status",
+            "Prioridade",
+            "Criado Em",
+            "Modificado Em"
+        ].join(";"),
+
+        ...rows.map(row =>
+            headers.map(h => {
+                const valor = (row[h] || "")
+                    .toString()
+                    .replace(/\r?\n/g, " ")
+                    .replace(/"/g, '""');
+
+                return `"${valor}"`;
+            }).join(";")
+        )
+    ].join("\n");
+
+    const blob = new Blob(
+        ["\ufeff" + csv],
+        { type: "text/csv;charset=utf-8;" }
+    );
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "Campanha_472_Leads.csv";
+    a.click();
+
+    console.log(`Exportados ${rows.length} leads`);
+});
