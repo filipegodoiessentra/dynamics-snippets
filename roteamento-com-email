@@ -1,0 +1,265 @@
+(async function () {
+
+    try {
+
+        const VENDEDORES = [
+            {
+                nome: "Cristiana Roseto",
+                id: "df619db6-3a77-eb11-a812-000d3adb5d0d"
+            },
+            {
+                nome: "Pablo Silva",
+                id: "67f1a84e-7471-f011-b4cc-000d3adb1307"
+            },
+            {
+                nome: "Matheus Silva",
+                id: "d46857cf-606e-f011-b4cc-6045bde0e1bb"
+            }
+        ];
+
+        const QUEUE_ID =
+            "{1DC95BFF-6E36-EC11-8C64-000D3ABA5426}";
+
+        const CAMPANHA_ID =
+            "f98d08d3-191e-f111-8341-000d3ab84eef";
+
+        const LEAD_SOURCE =
+            810600002;
+
+        const emailOriginalId =
+            Xrm.Page.data.entity.getId()
+            .replace(/[{}]/g, "");
+
+        let indice =
+            Number(
+                localStorage.getItem("lead_rr") || 0
+            );
+
+        const vendedor =
+            VENDEDORES[indice];
+
+        indice =
+            (indice + 1) %
+            VENDEDORES.length;
+
+        localStorage.setItem(
+            "lead_rr",
+            indice
+        );
+
+        const texto =
+            document.body.innerText;
+
+        const nomeCompleto =
+            texto.match(/Nome\s+([^\n]+)/)?.[1]?.trim() || "";
+
+        const email =
+            texto.match(/E-mail\s+([^\n]+)/)?.[1]?.trim() || "";
+
+        const telefone =
+            texto.match(/Telefone\s+([^\n]+)/)?.[1]?.trim() || "";
+
+        const descricao =
+            texto.match(
+                /Escreva aqui o que você precisa\.\s+([^\n]+)/
+            )?.[1]?.trim() || "";
+
+        const cidade =
+            texto.match(
+                /Cidade do Usuário\s+([^\n]+)/
+            )?.[1]?.trim() || "";
+
+        const estado =
+            texto.match(
+                /Região do Usuário\s+([^\n]+)/
+            )?.[1]?.trim() || "";
+
+        const partes =
+            nomeCompleto.split(" ");
+
+        const firstname =
+            partes.shift();
+
+        const lastname =
+            partes.join(" ") || firstname;
+
+        console.log("🚀 Criando Lead...");
+
+        const lead =
+            await Xrm.WebApi.createRecord(
+                "lead",
+                {
+                    firstname,
+                    lastname,
+
+                    companyname:
+                        nomeCompleto,
+
+                    emailaddress1:
+                        email,
+
+                    telephone1:
+                        telefone,
+
+                    description:
+                        descricao,
+
+                    address1_city:
+                        cidade,
+
+                    address1_stateorprovince:
+                        estado,
+
+                    cuk_leadsource:
+                        LEAD_SOURCE,
+
+                    "campaignid@odata.bind":
+                        `/campaigns(${CAMPANHA_ID})`
+                }
+            );
+
+        console.log(
+            "✅ Lead criado:",
+            lead.id
+        );
+
+        await Xrm.WebApi.updateRecord(
+            "email",
+            emailOriginalId,
+            {
+                "regardingobjectid_lead@odata.bind":
+                    `/leads(${lead.id})`
+            }
+        );
+
+        console.log(
+            "✅ E-mail relacionado ao Lead"
+        );
+
+        await Xrm.WebApi.updateRecord(
+            "lead",
+            lead.id,
+            {
+                "ownerid@odata.bind":
+                    `/systemusers(${vendedor.id})`
+            }
+        );
+
+        console.log(
+            "✅ Lead atribuído:",
+            vendedor.nome
+        );
+
+        const emailResposta =
+            await Xrm.WebApi.createRecord(
+                "email",
+                {
+                    subject:
+                        "Recebemos seu contato - Essentra Components",
+
+                    description:
+
+`Olá ${firstname},
+
+Muito obrigado pelo seu contato com a Essentra Components.
+
+Recebemos sua solicitação e ela já foi encaminhada para nossa equipe comercial.
+
+Para que possamos dar continuidade ao atendimento, poderia nos informar o CNPJ da empresa?
+
+Assim que recebermos essa informação, retornaremos o mais breve possível.
+
+Atenciosamente,
+
+Essentra Components`,
+
+                    "regardingobjectid_lead@odata.bind":
+                        `/leads(${lead.id})`
+                }
+            );
+
+        console.log(
+            "✅ Email criado:",
+            emailResposta.id
+        );
+
+        await Xrm.Navigation.openForm({
+            entityName: "email",
+            entityId: emailResposta.id
+        });
+
+        setTimeout(async () => {
+
+            try {
+
+                Xrm.Page.getAttribute("to")
+                    .setValue([
+                        {
+                            entityType:
+                                "unresolvedaddress",
+
+                            id:
+                                "{00000000-0000-0000-0000-000000000000}",
+
+                            name:
+                                email
+                        }
+                    ]);
+
+                console.log(
+                    "✅ TO preenchido"
+                );
+
+                try {
+
+                    Xrm.Page.getAttribute("from")
+                        .setValue([
+                            {
+                                entityType:
+                                    "queue",
+
+                                id:
+                                    QUEUE_ID,
+
+                                name:
+                                    "CBR Sales"
+                            }
+                        ]);
+
+                    console.log(
+                        "✅ FROM preenchido"
+                    );
+
+                } catch (e) {
+
+                    console.warn(
+                        "⚠️ FROM não preenchido",
+                        e
+                    );
+
+                }
+
+                await Xrm.Page.data.save();
+
+                console.log(
+                    "✅ Email salvo"
+                );
+
+            } catch (e) {
+
+                console.error(
+                    "Erro ao preencher email",
+                    e
+                );
+
+            }
+
+        }, 5000);
+
+    } catch (erro) {
+
+        console.error(erro);
+
+    }
+
+})();
