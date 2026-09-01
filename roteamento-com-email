@@ -28,7 +28,7 @@
 
         const emailOriginalId =
             Xrm.Page.data.entity.getId()
-            .replace(/[{}]/g, "");
+                .replace(/[{}]/g, "");
 
         let indice =
             Number(
@@ -74,6 +74,15 @@
                 /Região do Usuário\s+([^\n]+)/
             )?.[1]?.trim() || "";
 
+        if (!nomeCompleto || !email) {
+
+            alert(
+                "Nome ou Email não encontrados."
+            );
+
+            return;
+        }
+
         const partes =
             nomeCompleto.split(" ");
 
@@ -83,7 +92,9 @@
         const lastname =
             partes.join(" ") || firstname;
 
-        console.log("🚀 Criando Lead...");
+        console.log(
+            "🚀 Criando Lead..."
+        );
 
         const lead =
             await Xrm.WebApi.createRecord(
@@ -155,23 +166,20 @@
                 "email",
                 {
                     subject:
-                        "Recebemos seu contato - Essentra Components",
+                        "Contato Essentra",
 
                     description:
-
 `Olá ${firstname},
 
 Muito obrigado pelo seu contato com a Essentra Components.
 
-Recebemos sua solicitação e ela já foi encaminhada para nossa equipe comercial.
-
-Para que possamos dar continuidade ao atendimento, poderia nos informar o CNPJ da empresa?
+Recebemos sua solicitação e para que possamos dar continuidade ao atendimento, poderia nos informar o CNPJ da empresa?
 
 Assim que recebermos essa informação, retornaremos o mais breve possível.
 
 Atenciosamente,
 
-Essentra Components`,
+${vendedor.nome}`,
 
                     "regardingobjectid_lead@odata.bind":
                         `/leads(${lead.id})`
@@ -181,6 +189,65 @@ Essentra Components`,
         console.log(
             "✅ Email criado:",
             emailResposta.id
+        );
+
+        const historico =
+            JSON.parse(
+                localStorage.getItem("lead_log") || "[]"
+            );
+
+        historico.push({
+
+            dataCriacao:
+                new Date().toISOString(),
+
+            leadId:
+                lead.id,
+
+            emailOriginalId:
+                emailOriginalId,
+
+            emailRespostaId:
+                emailResposta.id,
+
+            nome:
+                nomeCompleto,
+
+            email:
+                email,
+
+            telefone:
+                telefone,
+
+            vendedor:
+                vendedor.nome,
+
+            vendedorId:
+                vendedor.id,
+
+            status:
+                "AguardandoResposta",
+
+            versao:
+                "5.2"
+        });
+
+        localStorage.setItem(
+            "lead_log",
+            JSON.stringify(historico)
+        );
+
+        localStorage.setItem(
+            "ultimoLead",
+            JSON.stringify({
+                leadId: lead.id,
+                emailOriginalId,
+                emailRespostaId: emailResposta.id,
+                nome: nomeCompleto,
+                email,
+                vendedor: vendedor.nome,
+                dataCriacao: new Date().toISOString()
+            })
         );
 
         await Xrm.Navigation.openForm({
@@ -210,34 +277,23 @@ Essentra Components`,
                     "✅ TO preenchido"
                 );
 
-                try {
+                Xrm.Page.getAttribute("from")
+                    .setValue([
+                        {
+                            entityType:
+                                "queue",
 
-                    Xrm.Page.getAttribute("from")
-                        .setValue([
-                            {
-                                entityType:
-                                    "queue",
+                            id:
+                                QUEUE_ID,
 
-                                id:
-                                    QUEUE_ID,
+                            name:
+                                "CBR Sales"
+                        }
+                    ]);
 
-                                name:
-                                    "CBR Sales"
-                            }
-                        ]);
-
-                    console.log(
-                        "✅ FROM preenchido"
-                    );
-
-                } catch (e) {
-
-                    console.warn(
-                        "⚠️ FROM não preenchido",
-                        e
-                    );
-
-                }
+                console.log(
+                    "✅ FROM preenchido"
+                );
 
                 await Xrm.Page.data.save();
 
@@ -245,11 +301,11 @@ Essentra Components`,
                     "✅ Email salvo"
                 );
 
-            } catch (e) {
+            } catch (erro) {
 
                 console.error(
                     "Erro ao preencher email",
-                    e
+                    erro
                 );
 
             }
@@ -258,7 +314,14 @@ Essentra Components`,
 
     } catch (erro) {
 
-        console.error(erro);
+        console.error(
+            "❌ Erro geral",
+            erro
+        );
+
+        alert(
+            "Erro durante a execução. Verifique o Console."
+        );
 
     }
 
