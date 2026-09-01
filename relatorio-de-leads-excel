@@ -1,0 +1,76 @@
+(() => {
+
+    const dados =
+        JSON.parse(
+            localStorage.getItem("lead_log") || "[]"
+        );
+
+    if (!dados.length) {
+        alert("Nenhum registro encontrado.");
+        return;
+    }
+
+    const colunas = [
+        "dataCriacao",
+        "leadId",
+        "emailOriginalId",
+        "emailRespostaId",
+        "nome",
+        "email",
+        "telefone",
+        "vendedor",
+        "vendedorId",
+        "status",
+        "versao"
+    ];
+
+    const linhas = [];
+
+    linhas.push(colunas.join(";"));
+
+    dados.forEach(item => {
+
+        const linha = colunas.map(coluna => {
+
+            return `"${String(
+                item[coluna] || ""
+            ).replace(/"/g, '""')}"`;
+
+        });
+
+        linhas.push(linha.join(";"));
+
+    });
+
+    const csv =
+        "\uFEFFsep=;\n" +
+        linhas.join("\n");
+
+    const blob =
+        new Blob(
+            [csv],
+            {
+                type: "text/csv;charset=utf-8;"
+            }
+        );
+
+    const url =
+        URL.createObjectURL(blob);
+
+    const a =
+        document.createElement("a");
+
+    a.href = url;
+
+    a.download =
+        `Historico-Leads-${new Date()
+            .toISOString()
+            .slice(0,10)}.csv`;
+
+    document.body.appendChild(a);
+
+    a.click();
+
+    document.body.removeChild(a);
+
+})();
