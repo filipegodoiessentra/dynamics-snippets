@@ -23,15 +23,25 @@
         }
     };
 
-    const ATENDIMENTO_RR = [
-        {
-            nome: "Cristina Alves",
-            id: "2ad29448-518c-ef11-ac20-6045bddd9c93"
-        },
-        {
-            nome: "Lilian Lopes",
-            id: "d5ca6b9c-6350-f011-877b-000d3adf9cf8"
-        }
+    const CRISTINA = {
+        nome: "Cristina Alves",
+        id: "2ad29448-518c-ef11-ac20-6045bddd9c93"
+    };
+
+    const LILIAN = {
+        nome: "Lilian Lopes",
+        id: "d5ca6b9c-6350-f011-877b-000d3adf9cf8"
+    };
+
+    const FILA_ATENDIMENTO = [
+        CRISTINA,
+        LILIAN
+    ];
+
+    const FILA_343_344 = [
+        VENDEDORES["338"], // Matheus
+        VENDEDORES["340"], // Pablo
+        VENDEDORES["346"]  // Cristiana Roseto
     ];
 
     const REGEX_COTACAO =
@@ -89,21 +99,21 @@
 
                 let vendedor = null;
 
-                // 335 = Lucimara
+                // 335 = Lucimara sempre
                 if (codigo === "335") {
 
                     vendedor = VENDEDORES["335"];
 
                 }
 
-                // 337 = Bruna
+                // 337 = Bruna sempre
                 else if (codigo === "337") {
 
                     vendedor = VENDEDORES["337"];
 
                 }
 
-                // 338, 340 e 346 = Cotações
+                // 338, 340 e 346 = Cotação fixa
                 else if (
                     ["338", "340", "346"].includes(codigo)
                 ) {
@@ -122,40 +132,65 @@
                 }
 
                 // 343 e 344
-                // Round Robin:
-                // Matheus -> Pablo -> Cristiana
                 else if (
                     ["343", "344"].includes(codigo)
                 ) {
 
-                    let indice =
-                        Number(
-                            localStorage.getItem(
-                                "rr_cotacao_343_344"
-                            ) || 0
+                    // Atendimento Comercial
+                    if (
+                        REGEX_ATENDIMENTO.test(
+                            tituloNormalizado
+                        )
+                    ) {
+
+                        let indice =
+                            Number(
+                                localStorage.getItem(
+                                    "rr_atendimento"
+                                ) || 0
+                            );
+
+                        vendedor =
+                            FILA_ATENDIMENTO[indice];
+
+                        indice =
+                            (indice + 1) %
+                            FILA_ATENDIMENTO.length;
+
+                        localStorage.setItem(
+                            "rr_atendimento",
+                            indice
                         );
 
-                    const FILA_COTACAO = [
-                        VENDEDORES["338"],
-                        VENDEDORES["340"],
-                        VENDEDORES["346"]
-                    ];
+                    }
 
-                    vendedor =
-                        FILA_COTACAO[indice];
+                    // Demais casos
+                    else {
 
-                    indice =
-                        (indice + 1) %
-                        FILA_COTACAO.length;
+                        let indice =
+                            Number(
+                                localStorage.getItem(
+                                    "rr_cotacao_343_344"
+                                ) || 0
+                            );
 
-                    localStorage.setItem(
-                        "rr_cotacao_343_344",
-                        indice
-                    );
+                        vendedor =
+                            FILA_343_344[indice];
+
+                        indice =
+                            (indice + 1) %
+                            FILA_343_344.length;
+
+                        localStorage.setItem(
+                            "rr_cotacao_343_344",
+                            indice
+                        );
+
+                    }
 
                 }
 
-                // Atendimento Comercial
+                // Atendimento Comercial para outros territórios
                 else if (
                     REGEX_ATENDIMENTO.test(
                         tituloNormalizado
@@ -170,11 +205,11 @@
                         );
 
                     vendedor =
-                        ATENDIMENTO_RR[indice];
+                        FILA_ATENDIMENTO[indice];
 
                     indice =
                         (indice + 1) %
-                        ATENDIMENTO_RR.length;
+                        FILA_ATENDIMENTO.length;
 
                     localStorage.setItem(
                         "rr_atendimento",
