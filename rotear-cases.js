@@ -23,7 +23,6 @@
         }
     };
 
-        // Round Robin de Atendimento Comercial entre Cristina e Lilian
     const ATENDIMENTO_RR = [
         {
             nome: "Cristina Alves",
@@ -90,24 +89,23 @@
 
                 let vendedor = null;
 
-                // 335 = Lucimara sempre
+                // 335 = Lucimara
                 if (codigo === "335") {
 
                     vendedor = VENDEDORES["335"];
 
                 }
 
-                // 337 = Bruna sempre (Continua recebendo até ser substituída)
+                // 337 = Bruna
                 else if (codigo === "337") {
 
                     vendedor = VENDEDORES["337"];
 
                 }
 
-                // Cotações nos territórios 338, 340 e 346
+                // 338, 340 e 346 = Cotações
                 else if (
-                    ["338", "340", "346"]
-                        .includes(codigo)
+                    ["338", "340", "346"].includes(codigo)
                 ) {
 
                     if (
@@ -123,11 +121,11 @@
 
                 }
 
-                // Cotações nos territórios 343 e 344
-                // Round Robin Matheus -> Pablo -> Cristiana
+                // 343 e 344
+                // Round Robin:
+                // Matheus -> Pablo -> Cristiana
                 else if (
-                    ["343", "344"]
-                        .includes(codigo)
+                    ["343", "344"].includes(codigo)
                 ) {
 
                     let indice =
@@ -138,9 +136,9 @@
                         );
 
                     const FILA_COTACAO = [
-                        VENDEDORES["338"], // Matheus
-                        VENDEDORES["340"], // Pablo
-                        VENDEDORES["346"]  // Cristiana
+                        VENDEDORES["338"],
+                        VENDEDORES["340"],
+                        VENDEDORES["346"]
                     ];
 
                     vendedor =
@@ -157,8 +155,7 @@
 
                 }
 
-                // Atendimento Comercial 
-                // Round Robin Cristina -> Lilian
+                // Atendimento Comercial
                 else if (
                     REGEX_ATENDIMENTO.test(
                         tituloNormalizado
