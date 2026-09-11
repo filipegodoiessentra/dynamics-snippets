@@ -1,0 +1,14 @@
+[
+  {
+    "EMAIL_DESTINO": "juliana@exemplo.com.br",
+    "NOME_CLIENTE": "Juliana",
+    "TITULO_DO_EMAIL": "Previsão de Novas Compras - Essentra",
+    "TEXTO": "Olá {{NOME}}, bom dia. Tudo bem?\n\nNotamos que vocês não tiveram compras conosco..."
+  },
+  {
+    "EMAIL_DESTINO": "carlos@exemplo.com.br",
+    "NOME_CLIENTE": "Carlos",
+    "TITULO_DO_EMAIL": "Previsão de Novas Compras - Essentra",
+    "TEXTO": "Olá {{NOME}}, bom dia. Tudo bem?\n\nNotamos que vocês não tiveram compras conosco..."
+  }
+]
