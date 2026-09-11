@@ -1,0 +1,292 @@
+(async function () {
+
+    try {
+
+        const VENDEDORES = [
+            {
+                nome: "Cristiana Roseto",
+                id: "df619db6-3a77-eb11-a812-000d3adb5d0d"
+            },
+            {
+                nome: "Pablo Silva",
+                id: "67f1a84e-7471-f011-b4cc-000d3adb1307"
+            },
+            {
+                nome: "Matheus Silva",
+                id: "d46857cf-606e-f011-b4cc-6045bde0e1bb"
+            }
+        ];
+
+        const ACCOUNT_SEM_REMETENTE =
+            "F52D46D1-2392-F011-B4CC-002248A2DAEF";
+
+        const CONTACT_SEM_REMETENTE =
+            "0F5AA6E9-2392-F011-B4CC-002248A2DAEF";
+
+        const htmlCorpo =
+            Xrm.Page.getAttribute("description")
+                ?.getValue() || "";
+
+        const temp =
+            document.createElement("div");
+
+        temp.innerHTML =
+            htmlCorpo;
+
+        const texto =
+            (temp.innerText ||
+             temp.textContent ||
+             "")
+            .replace(/\u00a0/g, " ");
+
+        const nomeAssinatura =
+            texto.match(
+                /Atenciosamente,[\s\r\n]*([^\r\n]+)/i
+            )?.[1]?.trim();
+
+        const vendedor =
+            VENDEDORES.find(
+                x =>
+                    x.nome.toLowerCase() ===
+                    (nomeAssinatura || "")
+                        .toLowerCase()
+            );
+
+        if (!vendedor) {
+
+            alert(
+                `❌ Vendedor não encontrado: ${nomeAssinatura}`
+            );
+
+            return;
+        }
+
+        console.log(
+            "✅ Vendedor identificado:",
+            vendedor.nome
+        );
+
+        const emailId =
+            Xrm.Page.data.entity.getId()
+                .replace(/[{}]/g, "");
+
+        console.log(
+            "✅ Email:",
+            emailId
+        );
+
+        console.log(
+            "🚀 Convertendo Email em Case..."
+        );
+
+        const request = {
+
+            ActivityId:
+                emailId,
+
+            ActivityEntityName:
+                "email",
+
+            CreateCampaignResponse:
+                false,
+
+            TargetEntityName:
+                "incident",
+
+            TargetEntity: {
+
+                "@odata.type":
+                    "#Microsoft.Dynamics.CRM.incident",
+
+                "customerid_account@odata.bind":
+                    `/accounts(${ACCOUNT_SEM_REMETENTE})`,
+
+                "primarycontactid@odata.bind":
+                    `/contacts(${CONTACT_SEM_REMETENTE})`
+            },
+
+            getMetadata: function () {
+
+                return {
+
+                    boundParameter:
+                        null,
+
+                    parameterTypes: {
+
+                        ActivityId: {
+                            typeName:
+                                "Edm.String",
+                            structuralProperty: 1
+                        },
+
+                        ActivityEntityName: {
+                            typeName:
+                                "Edm.String",
+                            structuralProperty: 1
+                        },
+
+                        CreateCampaignResponse: {
+                            typeName:
+                                "Edm.Boolean",
+                            structuralProperty: 1
+                        },
+
+                        TargetEntity: {
+                            typeName:
+                                "mscrm.incident",
+                            structuralProperty: 5
+                        },
+
+                        TargetEntityName: {
+                            typeName:
+                                "Edm.String",
+                            structuralProperty: 1
+                        }
+                    },
+
+                    operationType: 0,
+
+                    operationName:
+                        "ConvertActivity"
+                };
+            }
+        };
+
+        await Xrm.WebApi.online.execute(
+            request
+        );
+
+        console.log(
+            "✅ ConvertActivity executado"
+        );
+
+        await new Promise(
+            r => setTimeout(r, 3000)
+        );
+
+        const casos =
+            await Xrm.WebApi.retrieveMultipleRecords(
+                "incident",
+                "?$select=incidentid,createdon&$orderby=createdon desc&$top=1"
+            );
+
+        if (!casos.entities.length) {
+
+            throw new Error(
+                "Case não localizado."
+            );
+        }
+
+        const caseId =
+            casos.entities[0].incidentid;
+
+        console.log(
+            "✅ Case localizado:",
+            caseId
+        );
+
+        console.log(
+            "🚀 Assign para:",
+            vendedor.nome
+        );
+
+        await Xrm.WebApi.updateRecord(
+            "incident",
+            caseId,
+            {
+                "ownerid@odata.bind":
+                    `/systemusers(${vendedor.id})`
+            }
+        );
+
+        console.log(
+            "✅ Assign realizado"
+        );
+
+        console.log(
+            "🚀 Resolvendo Case..."
+        );
+
+        const closeIncidentRequest = {
+
+            IncidentResolution: {
+
+                subject:
+                    "Atendimento inicial concluído",
+
+                "incidentid@odata.bind":
+                    `/incidents(${caseId})`
+            },
+
+            Status:
+                971970059,
+
+            getMetadata: function () {
+
+                return {
+
+                    boundParameter:
+                        null,
+
+                    parameterTypes: {
+
+                        IncidentResolution: {
+
+                            typeName:
+                                "mscrm.incidentresolution",
+
+                            structuralProperty: 5
+                        },
+
+                        Status: {
+
+                            typeName:
+                                "Edm.Int32",
+
+                            structuralProperty: 1
+                        }
+                    },
+
+                    operationType: 0,
+
+                    operationName:
+                        "CloseIncident"
+                };
+            }
+        };
+
+        await Xrm.WebApi.online.execute(
+            closeIncidentRequest
+        );
+
+        console.log(
+            "✅ Case resolvido"
+        );
+
+        await Xrm.Navigation.openForm({
+            entityName: "incident",
+            entityId: caseId
+        });
+
+        alert(
+            `✅ Processo concluído!\n\n` +
+            `Case: ${caseId}\n` +
+            `Vendedor: ${vendedor.nome}\n` +
+            `Status: Resolvido`
+        );
+
+    } catch (erro) {
+
+        console.error(
+            "❌ Erro:",
+            erro
+        );
+
+        alert(
+            `Erro:\n${erro.message || erro}`
+        );
+
+    }
+
+})();
