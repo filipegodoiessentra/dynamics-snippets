@@ -1,0 +1,93 @@
+// 1. Função de pausa para não sobrecarregar a API do Dynamics (2 disparos por segundo)
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// 2. Função de criação e envio silencioso do e-mail
+async function enviarEmailDinamico(destinatario, assunto, corpo) {
+    try {
+        const emailData = {
+            subject: assunto,
+            description: corpo,
+            "email_activity_parties": [
+                {
+                    // DE: Fila CBR Sales
+                    "partyid_queue@odata.bind": "/queues(1dc95bff-6e36-ec11-8c64-000d3aba5426)",
+                    "participationtypemask": 1 
+                },
+                {
+                    // PARA: E-mail direto dinâmico
+                    "addressused": destinatario,
+                    "participationtypemask": 2 
+                }
+            ]
+        };
+
+        // Cria o rascunho
+        const novoEmail = await Xrm.WebApi.createRecord("email", emailData);
+        
+        // Prepara a Action de envio
+        const request = {
+            entity: { entityType: "email", id: novoEmail.id },
+            IssueSend: true,
+            getMetadata: function () {
+                return {
+                    boundParameter: "entity",
+                    operationType: 0,
+                    operationName: "SendEmail",
+                    parameterTypes: {
+                        entity: { typeName: "mscrm.email", structuralProperty: 5 },
+                        IssueSend: { typeName: "Edm.Boolean", structuralProperty: 1 }
+                    }
+                };
+            }
+        };
+
+        // Executa o disparo
+        await Xrm.WebApi.online.execute(request);
+        console.log(`✅ Enviado para: ${destinatario}`);
+
+    } catch (erro) {
+        console.error(`❌ Erro ao enviar para ${destinatario}:`, erro.message);
+    }
+}
+
+// 3. Motor que percorre a lista e faz as substituições
+async function dispararLote(lista) {
+    console.log(`🚀 Iniciando o disparo de ${lista.length} e-mails...`);
+    
+    for (let i = 0; i < lista.length; i++) {
+        const destinatario = lista[i].EMAIL_DESTINO;
+        const assunto = lista[i].TITULO_DO_EMAIL;
+        
+        // Troca a tag {{NOME}} pelo nome real do cliente presente na linha
+        const corpoFormatado = lista[i].TEXTO.replaceAll("{{NOME}}", lista[i].NOME_CLIENTE);
+        
+        await enviarEmailDinamico(destinatario, assunto, corpoFormatado);
+        
+        // Aguarda 500ms antes da próxima execução
+        await delay(500); 
+    }
+    
+    console.log("🏁 Disparo em lote finalizado com sucesso!");
+}
+
+// 4. Função inicial que busca os dados no seu GitHub
+async function carregarEEnviar(urlRaw) {
+    try {
+        console.log("📥 Baixando dados do GitHub...");
+        const resposta = await fetch(urlRaw);
+        
+        if (!resposta.ok) throw new Error("Falha ao acessar o link RAW.");
+        
+        const listaDeEmails = await resposta.json();
+        console.log(`✅ Arquivo lido! ${listaDeEmails.length} registros encontrados.`);
+        
+        // Inicia o processo
+        await dispararLote(listaDeEmails);
+        
+    } catch (erro) {
+        console.error("❌ Erro ao baixar ou ler o JSON:", erro.message);
+    }
+}
+
+// 5. O comando final que dá o pontapé inicial no fluxo usando a sua URL
+carregarEEnviar("https://raw.githubusercontent.com/filipegodoiessentra/dynamics-snippets/refs/heads/main/emails.json");
