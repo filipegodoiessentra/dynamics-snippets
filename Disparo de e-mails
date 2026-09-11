@@ -1,6 +1,5 @@
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Função que define a saudação pelo horário atual
 function obterSaudacao() {
     const horaAtual = new Date().getHours();
     if (horaAtual < 12) return "bom dia";
@@ -39,7 +38,7 @@ async function enviarEmailDinamico(destinatario, assunto, corpo) {
                         entity: { typeName: "mscrm.email", structuralProperty: 5 },
                         IssueSend: { typeName: "Edm.Boolean", structuralProperty: 1 }
                     }
-                };
+                }
             }
         };
 
@@ -53,56 +52,75 @@ async function enviarEmailDinamico(destinatario, assunto, corpo) {
 
 async function dispararLote(lista) {
     console.log(`🚀 Iniciando o disparo de ${lista.length} e-mails...`);
-    
-    // Captura a saudação exata no momento em que a função roda
     const saudacao = obterSaudacao();
     
     for (let i = 0; i < lista.length; i++) {
-        const destinatario = lista[i].EMAIL_DESTINO;
-        const assunto = lista[i].TITULO_DO_EMAIL;
+        // Mapeando exatamente como escrito no cabeçalho do seu Excel
+        const destinatario = lista[i]["EMAIL"];
+        const assunto = lista[i]["TITULO DO EMAIL"];
+        let corpoBase = lista[i]["TEXTO"] || "";
         
-        // Substitui o Nome, a Saudação e ajusta as quebras de linha HTML (<br>)
-        const corpoFormatado = lista[i].TEXTO
-            .replaceAll("{{NOME}}", lista[i].NOME_CLIENTE)
+        // Aplica as variáveis dinâmicas e quebras de linha
+        const corpoFormatado = corpoBase
+            .replaceAll("{{NOME}}", lista[i]["NOME"])
             .replaceAll("{{SAUDACAO}}", saudacao)
             .replace(/\n/g, "<br>");
         
-        await enviarEmailDinamico(destinatario, assunto, corpoFormatado);
-        await delay(500); 
+        if (destinatario && assunto) {
+            await enviarEmailDinamico(destinatario, assunto, corpoFormatado);
+            await delay(500); 
+        } else {
+            console.warn(`⚠️ Linha ${i + 2} ignorada: Faltando Email ou Título.`);
+        }
     }
     
     console.log("🏁 Disparo em lote finalizado com sucesso!");
 }
 
-function carregarArquivoLocal() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    
-    input.onchange = (evento) => {
-        const arquivo = evento.target.files[0];
-        if (!arquivo) return;
+// Injeta a biblioteca leitora de Excel e abre o arquivo
+function carregarExcelLocal() {
+    // 1. Carrega o SheetJS via CDN
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    document.head.appendChild(script);
 
-        const leitor = new FileReader();
-        console.log("📥 Lendo arquivo da sua máquina...");
+    script.onload = () => {
+        // 2. Cria o botão de upload para .xlsx
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.xlsx, .xls';
         
-        leitor.onload = async (e) => {
-            try {
-                const listaDeEmails = JSON.parse(e.target.result);
-                console.log(`✅ Arquivo lido com sucesso! ${listaDeEmails.length} registros encontrados.`);
-                
-                await dispararLote(listaDeEmails);
-                
-            } catch (erro) {
-                console.error("❌ O arquivo não tem um formato JSON válido:", erro.message);
-            }
+        input.onchange = (evento) => {
+            const arquivo = evento.target.files[0];
+            if (!arquivo) return;
+
+            const leitor = new FileReader();
+            console.log("📥 Lendo planilha do Excel...");
+            
+            leitor.onload = async (e) => {
+                try {
+                    // 3. O SheetJS converte o binário do Excel direto para JSON
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    
+                    // Pega a primeira aba da planilha
+                    const primeiraAba = workbook.SheetNames[0];
+                    const listaDeEmails = XLSX.utils.sheet_to_json(workbook.Sheets[primeiraAba]);
+                    
+                    console.log(`✅ Excel lido com sucesso! ${listaDeEmails.length} registros encontrados.`);
+                    await dispararLote(listaDeEmails);
+                    
+                } catch (erro) {
+                    console.error("❌ Falha ao processar o Excel:", erro.message);
+                }
+            };
+            
+            leitor.readAsArrayBuffer(arquivo);
         };
         
-        leitor.readAsText(arquivo);
+        input.click();
     };
-    
-    input.click();
 }
 
-// Inicia a execução
-carregarArquivoLocal();
+// Inicia o processo
+carregarExcelLocal();
