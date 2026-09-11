@@ -1,97 +1,39 @@
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// Substitua a antiga função "carregarEEnviar" por esta:
+function carregarArquivoLocal() {
+    // Cria um botão invisível de upload
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json'; // Aceita apenas arquivos JSON
+    
+    // O que acontece quando você escolhe o arquivo:
+    input.onchange = (evento) => {
+        const arquivo = evento.target.files[0];
+        if (!arquivo) return;
 
-// Função para definir Bom dia, Boa tarde ou Boa noite
-function obterSaudacao() {
-    const horaAtual = new Date().getHours();
-    if (horaAtual < 12) return "bom dia";
-    if (horaAtual < 18) return "boa tarde";
-    return "boa noite";
-}
-
-async function enviarEmailDinamico(destinatario, assunto, corpo) {
-    try {
-        const emailData = {
-            subject: assunto,
-            description: corpo,
-            "email_activity_parties": [
-                {
-                    "partyid_queue@odata.bind": "/queues(1dc95bff-6e36-ec11-8c64-000d3aba5426)",
-                    "participationtypemask": 1 
-                },
-                {
-                    "addressused": destinatario,
-                    "participationtypemask": 2 
-                }
-            ]
-        };
-
-        const novoEmail = await Xrm.WebApi.createRecord("email", emailData);
+        const leitor = new FileReader();
+        console.log("📥 Lendo arquivo da sua máquina...");
         
-        const request = {
-            entity: { entityType: "email", id: novoEmail.id },
-            IssueSend: true,
-            getMetadata: function () {
-                return {
-                    boundParameter: "entity",
-                    operationType: 0,
-                    operationName: "SendEmail",
-                    parameterTypes: {
-                        entity: { typeName: "mscrm.email", structuralProperty: 5 },
-                        IssueSend: { typeName: "Edm.Boolean", structuralProperty: 1 }
-                    }
-                };
+        leitor.onload = async (e) => {
+            try {
+                // Converte o texto do arquivo de volta para uma lista
+                const listaDeEmails = JSON.parse(e.target.result);
+                console.log(`✅ Arquivo lido com sucesso! ${listaDeEmails.length} registros encontrados.`);
+                
+                // Dispara o seu motor de envios
+                await dispararLote(listaDeEmails);
+                
+            } catch (erro) {
+                console.error("❌ O arquivo selecionado não tem um formato JSON válido:", erro.message);
             }
         };
-
-        await Xrm.WebApi.online.execute(request);
-        console.log(`✅ Enviado para: ${destinatario}`);
-
-    } catch (erro) {
-        console.error(`❌ Erro ao enviar para ${destinatario}:`, erro.message);
-    }
+        
+        // Lê o conteúdo do arquivo
+        leitor.readAsText(arquivo);
+    };
+    
+    // Abre a janela do Windows para selecionar o arquivo
+    input.click();
 }
 
-async function dispararLote(lista) {
-    console.log(`🚀 Iniciando o disparo de ${lista.length} e-mails...`);
-    
-    // Captura a saudação exata no momento em que o código roda
-    const saudacao = obterSaudacao();
-    
-    for (let i = 0; i < lista.length; i++) {
-        const destinatario = lista[i].EMAIL_DESTINO;
-        const assunto = lista[i].TITULO_DO_EMAIL;
-        
-        // 1. Substitui o Nome
-        // 2. Substitui a Saudação
-        // 3. Converte as quebras de linha (\n) do JSON para quebras HTML (<br>)
-        const corpoFormatado = lista[i].TEXTO
-            .replaceAll("{{NOME}}", lista[i].NOME_CLIENTE)
-            .replaceAll("{{SAUDACAO}}", saudacao)
-            .replace(/\n/g, "<br>");
-        
-        await enviarEmailDinamico(destinatario, assunto, corpoFormatado);
-        await delay(500); 
-    }
-    
-    console.log("🏁 Disparo em lote finalizado com sucesso!");
-}
-
-async function carregarEEnviar(urlRaw) {
-    try {
-        console.log("📥 Baixando dados do GitHub...");
-        const resposta = await fetch(urlRaw);
-        
-        if (!resposta.ok) throw new Error("Falha ao acessar o link RAW.");
-        
-        const listaDeEmails = await resposta.json();
-        console.log(`✅ Arquivo lido! ${listaDeEmails.length} registros encontrados.`);
-        
-        await dispararLote(listaDeEmails);
-        
-    } catch (erro) {
-        console.error("❌ Erro ao baixar ou ler o JSON:", erro.message);
-    }
-}
-
-// Execute com o seu link do GitHub atualizado
-carregarEEnviar("https://raw.githubusercontent.com/filipegodoiessentra/dynamics-snippets/refs/heads/main/emails.json");
+// O comando final que inicia tudo
+carregarArquivoLocal();
