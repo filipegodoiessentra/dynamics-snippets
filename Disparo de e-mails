@@ -57,30 +57,25 @@ async function dispararLote(lista) {
     for (let i = 0; i < lista.length; i++) {
         const destinatario = lista[i]["EMAIL"];
         
-        // Extração dos campos para o Assunto
         const tituloBase = lista[i]["TITULO DO EMAIL"] || "";
         const idCliente = lista[i]["ID"] || "";
         const csal = lista[i]["CSAL"] || "";
         const cotacao = lista[i]["COTAÇÃO"] || "";
+        const colunaB = lista[i]["NOME DO CLIENTE"] || "";
         
-        // 1. Obrigatoriamente Título + ID
+        // Formatação do Assunto
         let assuntoDinamico = `${tituloBase} ${idCliente}`.trim();
-        
-        // 2. Se houver CSAL, adiciona o hífen e o número
-        if (csal) {
-            assuntoDinamico += ` - ${csal}`;
-        }
-        
-        // 3. Se houver COTAÇÃO, adiciona o hífen e o número no final
-        if (cotacao) {
-            assuntoDinamico += ` - ${cotacao}`;
-        }
+        if (csal) assuntoDinamico += ` - ${csal}`;
+        if (cotacao) assuntoDinamico += ` - ${cotacao}`;
 
         let corpoBase = lista[i]["TEXTO"] || "";
         
+        // Formatação do Corpo do E-mail com as novas variáveis
         const corpoFormatado = corpoBase
             .replaceAll("{{NOME}}", lista[i]["NOME"] || "")
             .replaceAll("{{SAUDACAO}}", saudacao)
+            .replaceAll("{{COTACAO}}", cotacao)
+            .replaceAll("{{COLUNA_B}}", colunaB)
             .replace(/\n/g, "<br>");
         
         if (destinatario && tituloBase && idCliente) {
