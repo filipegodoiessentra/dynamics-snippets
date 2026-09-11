@@ -1,14 +1,14 @@
 [
   {
-    "EMAIL_DESTINO": "juliana@exemplo.com.br",
+    "EMAIL_DESTINO": "JulianaMartins@essentra.com",
     "NOME_CLIENTE": "Juliana",
     "TITULO_DO_EMAIL": "Previsão de Novas Compras - Essentra",
-    "TEXTO": "Olá {{NOME}}, bom dia. Tudo bem?\n\nNotamos que vocês não tiveram compras conosco..."
+    "TEXTO": "Olá {{NOME}}, bom dia. Tudo bem?\n\nNotamos que vocês não tiveram compras conosco em 2026 e gostariamos muito de retomar nossa parceria de fornecimento.\n\nPoderia, por gentileza, informar qual a previsão de novas compras ou cotações?\n\nAguardamos seu retorno.\n\nAtenciosamente,"
   },
   {
-    "EMAIL_DESTINO": "carlos@exemplo.com.br",
-    "NOME_CLIENTE": "Carlos",
+    "EMAIL_DESTINO": "filipegodoi@essentra.com",
+    "NOME_CLIENTE": "Filipe",
     "TITULO_DO_EMAIL": "Previsão de Novas Compras - Essentra",
-    "TEXTO": "Olá {{NOME}}, bom dia. Tudo bem?\n\nNotamos que vocês não tiveram compras conosco..."
+    "TEXTO": "Olá {{NOME}}, bom dia. Tudo bem?\n\nNotamos que vocês não tiveram compras conosco em 2026 e gostariamos muito de retomar nossa parceria de fornecimento.\n\nPoderia, por gentileza, informar qual a previsão de novas compras ou cotações?\n\nAguardamos seu retorno.\n\nAtenciosamente,"
   }
 ]
