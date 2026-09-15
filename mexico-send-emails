@@ -1,0 +1,132 @@
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function obterSaudacao() {
+    const horaAtual = new Date().getHours();
+    if (horaAtual < 12) return "bom dia";
+    if (horaAtual < 18) return "boa tarde";
+    return "boa noite";
+}
+
+async function enviarEmailDinamico(destinatario, assunto, corpo) {
+    try {
+        const emailData = {
+            subject: assunto,
+            description: corpo,
+            "email_activity_parties": [
+                {
+                    "partyid_queue@odata.bind": "/queues(2532f4b7-6e36-ec11-8c64-000d3aba5426)",
+                    "participationtypemask": 1 
+                },
+                {
+                    "addressused": destinatario,
+                    "participationtypemask": 2 
+                }
+            ]
+        };
+
+        const novoEmail = await Xrm.WebApi.createRecord("email", emailData);
+        
+        const request = {
+            entity: { entityType: "email", id: novoEmail.id },
+            IssueSend: true,
+            getMetadata: function () {
+                return {
+                    boundParameter: "entity",
+                    operationType: 0,
+                    operationName: "SendEmail",
+                    parameterTypes: {
+                        entity: { typeName: "mscrm.email", structuralProperty: 5 },
+                        IssueSend: { typeName: "Edm.Boolean", structuralProperty: 1 }
+                    }
+                }
+            }
+        };
+
+        await Xrm.WebApi.online.execute(request);
+        console.log(`✅ Enviado para: ${destinatario} | Assunto: ${assunto}`);
+
+    } catch (erro) {
+        console.error(`❌ Erro ao enviar para ${destinatario}:`, erro.message);
+    }
+}
+
+async function dispararLote(lista) {
+    console.log(`🚀 Iniciando o disparo de ${lista.length} e-mails...`);
+    const saudacao = obterSaudacao();
+    
+    for (let i = 0; i < lista.length; i++) {
+        const destinatario = lista[i]["EMAIL"];
+        
+        const tituloBase = lista[i]["TITULO DO EMAIL"] || "";
+        const idCliente = lista[i]["ID"] || "";
+        const csal = lista[i]["CSAL"] || "";
+        const cotacao = lista[i]["COTAÇÃO"] || "";
+        const colunaB = lista[i]["NOME DO CLIENTE"] || "";
+        
+        // Formatação do Assunto
+        let assuntoDinamico = `${tituloBase} ${idCliente}`.trim();
+        if (csal) assuntoDinamico += ` - ${csal}`;
+        if (cotacao) assuntoDinamico += ` - ${cotacao}`;
+
+        let corpoBase = lista[i]["TEXTO"] || "";
+        
+        // Formatação do Corpo do E-mail com as novas variáveis
+        const corpoFormatado = corpoBase
+            .replaceAll("{{NOME}}", lista[i]["NOME"] || "")
+            .replaceAll("{{SAUDACAO}}", saudacao)
+            .replaceAll("{{COTACAO}}", cotacao)
+            .replaceAll("{{COLUNA_B}}", colunaB)
+            .replace(/\n/g, "<br>");
+        
+        if (destinatario && tituloBase && idCliente) {
+            await enviarEmailDinamico(destinatario, assuntoDinamico, corpoFormatado);
+            await delay(500); 
+        } else {
+            console.warn(`⚠️ Linha ${i + 2} ignorada: Faltando Email, Título ou ID.`);
+        }
+    }
+    
+    console.log("🏁 Disparo em lote finalizado com sucesso!");
+}
+
+function carregarExcelLocal() {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    document.head.appendChild(script);
+
+    script.onload = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.xlsx, .xls';
+        
+        input.onchange = (evento) => {
+            const arquivo = evento.target.files[0];
+            if (!arquivo) return;
+
+            const leitor = new FileReader();
+            console.log("📥 Lendo planilha do Excel...");
+            
+            leitor.onload = async (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    
+                    const primeiraAba = workbook.SheetNames[0];
+                    const listaDeEmails = XLSX.utils.sheet_to_json(workbook.Sheets[primeiraAba]);
+                    
+                    console.log(`✅ Excel lido com sucesso! ${listaDeEmails.length} registros encontrados.`);
+                    await dispararLote(listaDeEmails);
+                    
+                } catch (erro) {
+                    console.error("❌ Falha ao processar o Excel:", erro.message);
+                }
+            };
+            
+            leitor.readAsArrayBuffer(arquivo);
+        };
+        
+        input.click();
+    };
+}
+
+carregarExcelLocal();
