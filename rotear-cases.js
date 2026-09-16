@@ -47,8 +47,8 @@
     const REGEX_COTACAO =
         /cotac|cotar|orcament|amostra|sample/i;
 
-    const REGEX_ATENDIMENTO =
-        /fup|follow|release|pedido de compra|novo pedido|posicao de entrega|posição de entrega|nota fiscal|\bnf\b|boleto/i;
+   const REGEX_ATENDIMENTO =
+/fup|follow|release|pedido de compra|purchase order|novo pedido|posicao de entrega|posição de entrega|nota fiscal|\bnf\b|boleto/i;
 
     let processados = 0;
 
@@ -131,10 +131,34 @@
 
                 }
 
-                // 343 e 344
-                else if (
-                    ["343", "344"].includes(codigo)
-                ) {
+                // 336 = Atendimento Comercial
+else if (codigo === "336") {
+
+    let indice =
+        Number(
+            localStorage.getItem(
+                "rr_atendimento"
+            ) || 0
+        );
+
+    vendedor =
+        FILA_ATENDIMENTO[indice];
+
+    indice =
+        (indice + 1) %
+        FILA_ATENDIMENTO.length;
+
+    localStorage.setItem(
+        "rr_atendimento",
+        indice
+    );
+
+}
+
+// 343 e 344
+else if (
+    ["343", "344"].includes(codigo)
+) {
 
                     // Atendimento Comercial
                     if (
