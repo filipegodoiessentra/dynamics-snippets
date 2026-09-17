@@ -1,5 +1,10 @@
 (async function () {
 
+    const FILIPE = {
+        nome: "Filipe Godoi",
+        id: "4E5CF1FD-297A-F111-AB0E-7CED8D76ED49"
+    };
+
     const VENDEDORES = {
         "335": {
             nome: "Lucimara Cecilio",
@@ -75,12 +80,17 @@
                         ?.innerText
                         ?.trim() || "";
 
+                const fila =
+                    row.querySelector('[col-id="queueid"]')
+                        ?.innerText
+                        ?.trim() || "";
+
                 const ticket =
                     row.querySelector('[col-id*="ticketnumber"]')
                         ?.innerText
                         ?.trim() || "";
 
-                if (!titulo || !territorio) {
+                if (!titulo) {
                     continue;
                 }
 
@@ -93,27 +103,31 @@
                 const codigo =
                     territorio.match(/\((\d+)\)/)?.[1];
 
-                if (!codigo) {
-                    continue;
-                }
-
                 let vendedor = null;
 
-                // 335 = Lucimara sempre
-                if (codigo === "335") {
+                // PRIORIDADE MÁXIMA
+                // CBR Exports -> Filipe
+                if (fila === "CBR Exports") {
+
+                    vendedor = FILIPE;
+
+                }
+
+                // 335 = Lucimara
+                else if (codigo === "335") {
 
                     vendedor = VENDEDORES["335"];
 
                 }
 
-                // 337 = Bruna sempre
+                // 337 = Bruna
                 else if (codigo === "337") {
 
                     vendedor = VENDEDORES["337"];
 
                 }
 
-                // Atendimento Comercial tem prioridade para todos os demais territórios
+                // Atendimento Comercial tem prioridade
                 else if (
                     REGEX_ATENDIMENTO.test(
                         tituloNormalizado
@@ -143,7 +157,8 @@
 
                 // 338, 340 e 346 = Cotação fixa
                 else if (
-                    ["338", "340", "346"].includes(codigo)
+                    ["338", "340", "346"]
+                        .includes(codigo)
                 ) {
 
                     if (
@@ -185,7 +200,8 @@
 
                 // 343 e 344
                 else if (
-                    ["343", "344"].includes(codigo)
+                    ["343", "344"]
+                        .includes(codigo)
                 ) {
 
                     let indice =
@@ -234,7 +250,7 @@
                 processados++;
 
                 console.log(
-                    `✅ ROTEADO | ${ticket} | ${titulo} | ${codigo} | ${vendedor.nome}`
+                    `✅ ROTEADO | ${ticket} | FILA: ${fila} | TERR: ${codigo || "-"} | ${vendedor.nome} | ${titulo}`
                 );
 
             } catch (erroLinha) {
