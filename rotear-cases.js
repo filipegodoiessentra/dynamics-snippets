@@ -54,6 +54,9 @@
 
     const REGEX_ATENDIMENTO =
         /fup|follow|release|pedido|purchase|posicao de entrega|posição de entrega|nota fiscal|\bnf\b|boleto/i;
+    
+    const REGEX_LUCIMARA = 
+        /\b(weg|mwm)\b/i;
 
     let processados = 0;
 
@@ -113,11 +116,12 @@
 
                 }
 
-                // 335 = Lucimara
-                else if (codigo === "335") {
-
+                // Lucimara = Território 335 OU Título contendo WEG/MWM
+                else if (
+                    codigo === "335" || 
+                    REGEX_LUCIMARA.test(tituloNormalizado)
+                ) {
                     vendedor = VENDEDORES["335"];
-
                 }
 
                 // 337 = Bruna
