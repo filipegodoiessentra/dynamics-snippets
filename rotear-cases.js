@@ -48,7 +48,7 @@
         /cotac|cotar|orcament|amostra|sample/i;
 
    const REGEX_ATENDIMENTO =
-/fup|follow|release|pedido de compra|purchase order|novo pedido|posicao de entrega|posição de entrega|nota fiscal|\bnf\b|boleto/i;
+/fup|follow|release|pedido|purchase|posicao de entrega|posição de entrega|nota fiscal|\bnf\b|boleto/i;
 
     let processados = 0;
 
