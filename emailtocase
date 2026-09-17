@@ -153,36 +153,31 @@
             }
         };
 
-        await Xrm.WebApi.online.execute(
-            request
-        );
-
-        console.log(
-            "✅ ConvertActivity executado"
-        );
-
-        await new Promise(
-            r => setTimeout(r, 3000)
-        );
-
-        const casos =
-            await Xrm.WebApi.retrieveMultipleRecords(
-                "incident",
-                "?$select=incidentid,createdon&$orderby=createdon desc&$top=1"
+        const response =
+            await Xrm.WebApi.online.execute(
+                request
             );
 
-        if (!casos.entities.length) {
+        const result =
+            await response.json();
+
+        console.log(
+            "✅ ConvertActivity executado:",
+            result
+        );
+
+        const caseId =
+            result.RecordId;
+
+        if (!caseId) {
 
             throw new Error(
-                "Case não localizado."
+                "CaseId não retornado pelo ConvertActivity."
             );
         }
 
-        const caseId =
-            casos.entities[0].incidentid;
-
         console.log(
-            "✅ Case localizado:",
+            "✅ Case criado:",
             caseId
         );
 
@@ -204,66 +199,6 @@
             "✅ Assign realizado"
         );
 
-        console.log(
-            "🚀 Resolvendo Case..."
-        );
-
-        const closeIncidentRequest = {
-
-            IncidentResolution: {
-
-                subject:
-                    "Atendimento inicial concluído",
-
-                "incidentid@odata.bind":
-                    `/incidents(${caseId})`
-            },
-
-            Status:
-                971970059,
-
-            getMetadata: function () {
-
-                return {
-
-                    boundParameter:
-                        null,
-
-                    parameterTypes: {
-
-                        IncidentResolution: {
-
-                            typeName:
-                                "mscrm.incidentresolution",
-
-                            structuralProperty: 5
-                        },
-
-                        Status: {
-
-                            typeName:
-                                "Edm.Int32",
-
-                            structuralProperty: 1
-                        }
-                    },
-
-                    operationType: 0,
-
-                    operationName:
-                        "CloseIncident"
-                };
-            }
-        };
-
-        await Xrm.WebApi.online.execute(
-            closeIncidentRequest
-        );
-
-        console.log(
-            "✅ Case resolvido"
-        );
-
         await Xrm.Navigation.openForm({
             entityName: "incident",
             entityId: caseId
@@ -273,7 +208,7 @@
             `✅ Processo concluído!\n\n` +
             `Case: ${caseId}\n` +
             `Vendedor: ${vendedor.nome}\n` +
-            `Status: Resolvido`
+            `Status: Aberto`
         );
 
     } catch (erro) {
