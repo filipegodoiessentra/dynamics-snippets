@@ -23,6 +23,13 @@
         const CONTACT_SEM_REMETENTE =
             "0F5AA6E9-2392-F011-B4CC-002248A2DAEF";
 
+        const SUBJECT_QUOTE_REQUEST =
+            "B5C78454-4AAA-EA11-A812-000D3A86A8CF";
+
+        const emailId =
+            Xrm.Page.data.entity.getId()
+                .replace(/[{}]/g, "");
+
         const htmlCorpo =
             Xrm.Page.getAttribute("description")
                 ?.getValue() || "";
@@ -62,24 +69,46 @@
         }
 
         console.log(
-            "✅ Vendedor identificado:",
+            "✅ Vendedor:",
             vendedor.nome
         );
 
-        const emailId =
-            Xrm.Page.data.entity.getId()
+        const regarding =
+            Xrm.Page.getAttribute(
+                "regardingobjectid"
+            )?.getValue();
+
+        if (
+            !regarding ||
+            !regarding.length
+        ) {
+
+            throw new Error(
+                "Lead não encontrado no Regarding."
+            );
+        }
+
+        const leadId =
+            regarding[0].id
                 .replace(/[{}]/g, "");
 
-        console.log(
-            "✅ Email:",
-            emailId
-        );
+        const lead =
+            await Xrm.WebApi.retrieveRecord(
+                "lead",
+                leadId,
+                "?$select=cuk_leadid"
+            );
+
+        const leadNumber =
+            lead.cuk_leadid ||
+            "";
 
         console.log(
-            "🚀 Convertendo Email em Case..."
+            "✅ Lead:",
+            leadNumber
         );
 
-        const request = {
+        const convertRequest = {
 
             ActivityId:
                 emailId,
@@ -153,37 +182,48 @@
             }
         };
 
+        console.log(
+            "🚀 Convertendo Email..."
+        );
+
         const response =
             await Xrm.WebApi.online.execute(
-                request
+                convertRequest
             );
 
         const result =
             await response.json();
 
-        console.log(
-            "✅ ConvertActivity executado:",
-            result
-        );
-
         const caseId =
             result.RecordId;
 
-        if (!caseId) {
-
-            throw new Error(
-                "CaseId não retornado pelo ConvertActivity."
-            );
-        }
-
         console.log(
-            "✅ Case criado:",
+            "✅ Case:",
             caseId
         );
 
         console.log(
-            "🚀 Assign para:",
-            vendedor.nome
+            "🚀 Atualizando título..."
+        );
+
+        await Xrm.WebApi.updateRecord(
+            "incident",
+            caseId,
+            {
+                title:
+                    `Novo Lead Essentra! ${leadNumber}`,
+
+                "subjectid@odata.bind":
+                    `/subjects(${SUBJECT_QUOTE_REQUEST})`
+            }
+        );
+
+        console.log(
+            "✅ Título e Quote Request aplicados"
+        );
+
+        console.log(
+            "🚀 Assign..."
         );
 
         await Xrm.WebApi.updateRecord(
@@ -205,7 +245,8 @@
         });
 
         alert(
-            `✅ Processo concluído!\n\n` +
+            `✅ Sucesso!\n\n` +
+            `Lead: ${leadNumber}\n` +
             `Case: ${caseId}\n` +
             `Vendedor: ${vendedor.nome}\n` +
             `Status: Aberto`
