@@ -100,12 +100,15 @@
             );
 
         const leadNumber =
-            lead.cuk_leadid ||
-            "";
+            lead.cuk_leadid || "";
 
         console.log(
             "✅ Lead:",
             leadNumber
+        );
+
+        console.log(
+            "🚀 Convertendo Email em Case..."
         );
 
         const convertRequest = {
@@ -182,10 +185,6 @@
             }
         };
 
-        console.log(
-            "🚀 Convertendo Email..."
-        );
-
         const response =
             await Xrm.WebApi.online.execute(
                 convertRequest
@@ -197,13 +196,20 @@
         const caseId =
             result.RecordId;
 
+        if (!caseId) {
+
+            throw new Error(
+                "CaseId não retornado pelo ConvertActivity."
+            );
+        }
+
         console.log(
-            "✅ Case:",
+            "✅ Case criado:",
             caseId
         );
 
         console.log(
-            "🚀 Atualizando título..."
+            "🚀 Atualizando título e motivo..."
         );
 
         await Xrm.WebApi.updateRecord(
@@ -219,11 +225,12 @@
         );
 
         console.log(
-            "✅ Título e Quote Request aplicados"
+            "✅ Título e Quote Request atualizados"
         );
 
         console.log(
-            "🚀 Assign..."
+            "🚀 Assign para:",
+            vendedor.nome
         );
 
         await Xrm.WebApi.updateRecord(
@@ -239,17 +246,77 @@
             "✅ Assign realizado"
         );
 
+        console.log(
+            "🚀 Fechando Case..."
+        );
+
+        const closeIncidentRequest = {
+
+            IncidentResolution: {
+
+                subject:
+                    "Atendimento inicial concluído",
+
+                "incidentid@odata.bind":
+                    `/incidents(${caseId})`
+            },
+
+            Status:
+                971970059,
+
+            getMetadata: function () {
+
+                return {
+
+                    boundParameter:
+                        null,
+
+                    parameterTypes: {
+
+                        IncidentResolution: {
+
+                            typeName:
+                                "mscrm.incidentresolution",
+
+                            structuralProperty: 5
+                        },
+
+                        Status: {
+
+                            typeName:
+                                "Edm.Int32",
+
+                            structuralProperty: 1
+                        }
+                    },
+
+                    operationType: 0,
+
+                    operationName:
+                        "CloseIncident"
+                };
+            }
+        };
+
+        await Xrm.WebApi.online.execute(
+            closeIncidentRequest
+        );
+
+        console.log(
+            "✅ Case fechado"
+        );
+
         await Xrm.Navigation.openForm({
             entityName: "incident",
             entityId: caseId
         });
 
         alert(
-            `✅ Sucesso!\n\n` +
+            `✅ Processo concluído!\n\n` +
             `Lead: ${leadNumber}\n` +
             `Case: ${caseId}\n` +
             `Vendedor: ${vendedor.nome}\n` +
-            `Status: Aberto`
+            `Status: Resolvido`
         );
 
     } catch (erro) {
