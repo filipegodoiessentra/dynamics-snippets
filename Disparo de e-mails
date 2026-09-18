@@ -718,7 +718,7 @@ function mostrarErrosPreValidacao(resultado) {
             criarIndicador(
                 "REGISTROS ANALISADOS",
                 resultado.total,
-                "#0f6cbd"
+                "#9B0047"
             )
         );
 
@@ -799,7 +799,7 @@ function mostrarErrosPreValidacao(resultado) {
         const footer = criarRodapeModal();
 
         const botaoFechar = criarBotao("Fechar e corrigir", {
-            background: "#0f6cbd",
+            background: "#9B0047",
             color: "#ffffff"
         });
 
@@ -841,7 +841,7 @@ function mostrarPreviewDisparo(lista) {
         const header = criarCabecalhoModal(
             "📧 Pré-visualização do disparo",
             "Confira o primeiro e-mail da planilha antes de iniciar o lote.",
-            { fundo: "#0f6cbd", texto: "#ffffff" }
+            { fundo: "#9B0047", texto: "#ffffff" }
         );
 
         const conteudo = criarConteudoModal();
@@ -1102,7 +1102,7 @@ function mostrarResultadoFinal(resultado) {
         });
 
         resumo.appendChild(
-            criarIndicador("TOTAL PROCESSADO", total, "#0f6cbd")
+            criarIndicador("TOTAL PROCESSADO", total, "#9B0047")
         );
 
         resumo.appendChild(
@@ -1186,7 +1186,7 @@ function mostrarResultadoFinal(resultado) {
         const footer = criarRodapeModal();
 
         const botaoFechar = criarBotao("Fechar", {
-            background: "#0f6cbd",
+            background: "#9B0047",
             color: "#ffffff"
         });
 
