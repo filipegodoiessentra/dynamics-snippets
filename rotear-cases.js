@@ -26,7 +26,7 @@
             nome: "Cristiana Roseto",
             id: "df619db6-3a77-eb11-a812-000d3adb5d0d"
         }
-    };
+   };
 
     const CRISTINA = {
         nome: "Cristina Alves",
@@ -38,8 +38,9 @@
         id: "d5ca6b9c-6350-f011-877b-000d3adf9cf8"
     };
 
+    // Cristina temporariamente fora do rodízio
     const FILA_ATENDIMENTO = [
-        CRISTINA,
+        //CRISTINA,
         LILIAN
     ];
 
