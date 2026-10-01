@@ -2,81 +2,297 @@
 
     try {
 
+        console.clear();
+
+        console.log("======================================");
+        console.log("🚀 CONVERSÃO EMAIL → CASE - V2.0");
+        console.log("======================================");
+
+
+        // =========================================================
+        // CONFIGURAÇÕES
+        // =========================================================
+
         const VENDEDORES = [
+
             {
                 nome: "Cristiana Roseto",
                 id: "df619db6-3a77-eb11-a812-000d3adb5d0d"
             },
+
             {
                 nome: "Pablo Silva",
                 id: "67f1a84e-7471-f011-b4cc-000d3adb1307"
             },
+
             {
                 nome: "Matheus Silva",
                 id: "d46857cf-606e-f011-b4cc-6045bde0e1bb"
             }
+
         ];
+
 
         const ACCOUNT_SEM_REMETENTE =
             "F52D46D1-2392-F011-B4CC-002248A2DAEF";
 
+
         const CONTACT_SEM_REMETENTE =
             "0F5AA6E9-2392-F011-B4CC-002248A2DAEF";
+
 
         const SUBJECT_QUOTE_REQUEST =
             "B5C78454-4AAA-EA11-A812-000D3A86A8CF";
 
+
+
+        // =========================================================
+        // 1. LOCALIZAR O EMAIL ABERTO NO POPUP
+        // =========================================================
+
+        console.log("🔎 Procurando email aberto no popup...");
+
+
+        const emailsEncontrados = [];
+
+
+        for (let i = 0; i < window.frames.length; i++) {
+
+            try {
+
+                const frame =
+                    window.frames[i];
+
+
+                const entity =
+                    frame.Xrm
+                        ?.Page
+                        ?.data
+                        ?.entity
+                        ?.getEntityName
+                        ?.();
+
+
+                const id =
+                    frame.Xrm
+                        ?.Page
+                        ?.data
+                        ?.entity
+                        ?.getId
+                        ?.();
+
+
+                if (
+                    entity === "email" &&
+                    id
+                ) {
+
+                    emailsEncontrados.push({
+
+                        indice:
+                            i,
+
+                        frame:
+                            frame,
+
+                        id:
+                            id.replace(
+                                /[{}]/g,
+                                ""
+                            )
+
+                    });
+
+                }
+
+            } catch (e) {
+
+                // Frames sem acesso são ignorados.
+
+            }
+
+        }
+
+
+
+        if (
+            emailsEncontrados.length === 0
+        ) {
+
+            alert(
+                "❌ Nenhum email aberto foi encontrado.\n\n" +
+                "Abra o email no popup e execute novamente."
+            );
+
+            return;
+
+        }
+
+
+
+        // Usa o último formulário de email encontrado.
+        // No nosso teste, o popup apareceu como o último email.
+
+        const emailAberto =
+            emailsEncontrados[
+                emailsEncontrados.length - 1
+            ];
+
+
+        const emailFrame =
+            emailAberto.frame;
+
+
+        const emailXrm =
+            emailFrame.Xrm;
+
+
         const emailId =
-            Xrm.Page.data.entity.getId()
-                .replace(/[{}]/g, "");
+            emailAberto.id;
+
+
+
+        console.log(
+            "✅ Email encontrado no frame:",
+            emailAberto.indice
+        );
+
+
+        console.log(
+            "✅ Email ID:",
+            emailId
+        );
+
+
+
+        // =========================================================
+        // 2. OBTER CORPO HTML DO EMAIL
+        // =========================================================
+
+        console.log(
+            "📖 Lendo corpo do email..."
+        );
+
 
         const htmlCorpo =
-            Xrm.Page.getAttribute("description")
+            emailXrm.Page
+                .getAttribute(
+                    "description"
+                )
                 ?.getValue() || "";
 
+
+
+        if (!htmlCorpo) {
+
+            throw new Error(
+                "O campo Description do email está vazio ou não pôde ser lido."
+            );
+
+        }
+
+
+
+        console.log(
+            "✅ Corpo do email encontrado."
+        );
+
+
+
+        // =========================================================
+        // 3. CONVERTER HTML PARA TEXTO
+        // =========================================================
+
         const temp =
-            document.createElement("div");
+            document.createElement(
+                "div"
+            );
+
 
         temp.innerHTML =
             htmlCorpo;
 
+
         const texto =
-            (temp.innerText ||
-             temp.textContent ||
-             "")
-            .replace(/\u00a0/g, " ");
+            (
+                temp.innerText ||
+                temp.textContent ||
+                ""
+            )
+                .replace(
+                    /\u00a0/g,
+                    " "
+                );
+
+
+
+        // =========================================================
+        // 4. IDENTIFICAR VENDEDOR PELA ASSINATURA
+        // =========================================================
 
         const nomeAssinatura =
             texto.match(
                 /Atenciosamente,[\s\r\n]*([^\r\n]+)/i
             )?.[1]?.trim();
 
+
+
+        console.log(
+            "🔎 Assinatura encontrada:",
+            nomeAssinatura || "(não encontrada)"
+        );
+
+
+
         const vendedor =
             VENDEDORES.find(
+
                 x =>
                     x.nome.toLowerCase() ===
                     (nomeAssinatura || "")
                         .toLowerCase()
+
             );
+
+
 
         if (!vendedor) {
 
             alert(
-                `❌ Vendedor não encontrado: ${nomeAssinatura}`
+                `❌ Vendedor não encontrado.\n\n` +
+                `Assinatura identificada: ${nomeAssinatura || "nenhuma"}`
             );
 
             return;
+
         }
+
+
 
         console.log(
             "✅ Vendedor:",
             vendedor.nome
         );
 
+
+
+        // =========================================================
+        // 5. PEGAR LEAD DO REGARDING
+        // =========================================================
+
+        console.log(
+            "🔎 Procurando Lead no Regarding..."
+        );
+
+
         const regarding =
-            Xrm.Page.getAttribute(
-                "regardingobjectid"
-            )?.getValue();
+            emailXrm.Page
+                .getAttribute(
+                    "regardingobjectid"
+                )
+                ?.getValue();
+
+
 
         if (
             !regarding ||
@@ -84,32 +300,133 @@
         ) {
 
             throw new Error(
-                "Lead não encontrado no Regarding."
+                "Lead não encontrado no Regarding do email."
             );
+
         }
 
+
+
+        console.log(
+            "Regarding encontrado:",
+            regarding[0]
+        );
+
+
+
+        // Proteção adicional:
+        // garante que o Regarding seja realmente Lead.
+
+        if (
+            regarding[0].entityType &&
+            regarding[0].entityType.toLowerCase() !== "lead"
+        ) {
+
+            throw new Error(
+                `O Regarding não é um Lead. Tipo encontrado: ${regarding[0].entityType}`
+            );
+
+        }
+
+
+
         const leadId =
-            regarding[0].id
-                .replace(/[{}]/g, "");
+            regarding[0]
+                .id
+                .replace(
+                    /[{}]/g,
+                    ""
+                );
+
+
+
+        console.log(
+            "✅ Lead ID:",
+            leadId
+        );
+
+
+
+        // =========================================================
+        // 6. BUSCAR NÚMERO DO LEAD
+        // =========================================================
+
+        console.log(
+            "🔎 Buscando número do Lead..."
+        );
+
 
         const lead =
             await Xrm.WebApi.retrieveRecord(
+
                 "lead",
+
                 leadId,
+
                 "?$select=cuk_leadid"
+
             );
+
+
 
         const leadNumber =
             lead.cuk_leadid || "";
+
+
 
         console.log(
             "✅ Lead:",
             leadNumber
         );
 
+
+
+        // =========================================================
+        // 7. RESUMO ANTES DA CONVERSÃO
+        // =========================================================
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            "📋 DADOS PARA CONVERSÃO"
+        );
+
+        console.log(
+            "Email ID:",
+            emailId
+        );
+
+        console.log(
+            "Lead ID:",
+            leadId
+        );
+
+        console.log(
+            "Lead Number:",
+            leadNumber
+        );
+
+        console.log(
+            "Vendedor:",
+            vendedor.nome
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+
+        // =========================================================
+        // 8. CONVERTER EMAIL EM CASE
+        // =========================================================
+
         console.log(
             "🚀 Convertendo Email em Case..."
         );
+
 
         const convertRequest = {
 
@@ -135,7 +452,9 @@
 
                 "primarycontactid@odata.bind":
                     `/contacts(${CONTACT_SEM_REMETENTE})`
+
             },
+
 
             getMetadata: function () {
 
@@ -147,108 +466,211 @@
                     parameterTypes: {
 
                         ActivityId: {
+
                             typeName:
                                 "Edm.String",
-                            structuralProperty: 1
+
+                            structuralProperty:
+                                1
+
                         },
+
 
                         ActivityEntityName: {
+
                             typeName:
                                 "Edm.String",
-                            structuralProperty: 1
+
+                            structuralProperty:
+                                1
+
                         },
+
 
                         CreateCampaignResponse: {
+
                             typeName:
                                 "Edm.Boolean",
-                            structuralProperty: 1
+
+                            structuralProperty:
+                                1
+
                         },
+
 
                         TargetEntity: {
+
                             typeName:
                                 "mscrm.incident",
-                            structuralProperty: 5
+
+                            structuralProperty:
+                                5
+
                         },
 
+
                         TargetEntityName: {
+
                             typeName:
                                 "Edm.String",
-                            structuralProperty: 1
+
+                            structuralProperty:
+                                1
+
                         }
+
                     },
 
-                    operationType: 0,
+                    operationType:
+                        0,
 
                     operationName:
                         "ConvertActivity"
+
                 };
+
             }
+
         };
+
+
 
         const response =
             await Xrm.WebApi.online.execute(
                 convertRequest
             );
 
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                `ConvertActivity falhou. HTTP ${response.status}`
+            );
+
+        }
+
+
+
         const result =
             await response.json();
 
+
+
         const caseId =
-            result.RecordId;
+            result.RecordId
+                ?.replace(
+                    /[{}]/g,
+                    ""
+                );
+
+
 
         if (!caseId) {
+
+            console.error(
+                "Resposta ConvertActivity:",
+                result
+            );
 
             throw new Error(
                 "CaseId não retornado pelo ConvertActivity."
             );
+
         }
+
+
 
         console.log(
             "✅ Case criado:",
             caseId
         );
 
+
+
+        // =========================================================
+        // 9. ATUALIZAR TÍTULO E QUOTE REQUEST
+        // =========================================================
+
         console.log(
-            "🚀 Atualizando título e motivo..."
+            "🚀 Atualizando título e Quote Request..."
         );
 
+
         await Xrm.WebApi.updateRecord(
+
             "incident",
+
             caseId,
+
             {
+
                 title:
                     `Novo Lead Essentra! ${leadNumber}`,
 
                 "subjectid@odata.bind":
                     `/subjects(${SUBJECT_QUOTE_REQUEST})`
+
             }
+
         );
 
+
+
         console.log(
-            "✅ Título e Quote Request atualizados"
+            "✅ Título atualizado:",
+            `Novo Lead Essentra! ${leadNumber}`
         );
+
+
+        console.log(
+            "✅ Case Reason: Quote Request"
+        );
+
+
+
+        // =========================================================
+        // 10. ATRIBUIR CASE AO VENDEDOR
+        // =========================================================
 
         console.log(
             "🚀 Assign para:",
             vendedor.nome
         );
 
+
         await Xrm.WebApi.updateRecord(
+
             "incident",
+
             caseId,
+
             {
+
                 "ownerid@odata.bind":
                     `/systemusers(${vendedor.id})`
+
             }
+
         );
 
+
+
         console.log(
-            "✅ Assign realizado"
+            "✅ Assign realizado:",
+            vendedor.nome
         );
+
+
+
+        // =========================================================
+        // 11. FECHAR CASE
+        // =========================================================
 
         console.log(
             "🚀 Fechando Case..."
         );
+
 
         const closeIncidentRequest = {
 
@@ -259,10 +681,13 @@
 
                 "incidentid@odata.bind":
                     `/incidents(${caseId})`
+
             },
+
 
             Status:
                 971970059,
+
 
             getMetadata: function () {
 
@@ -278,56 +703,149 @@
                             typeName:
                                 "mscrm.incidentresolution",
 
-                            structuralProperty: 5
+                            structuralProperty:
+                                5
+
                         },
+
 
                         Status: {
 
                             typeName:
                                 "Edm.Int32",
 
-                            structuralProperty: 1
+                            structuralProperty:
+                                1
+
                         }
+
                     },
 
-                    operationType: 0,
+                    operationType:
+                        0,
 
                     operationName:
                         "CloseIncident"
+
                 };
+
             }
+
         };
 
-        await Xrm.WebApi.online.execute(
-            closeIncidentRequest
-        );
+
+
+        const closeResponse =
+            await Xrm.WebApi.online.execute(
+                closeIncidentRequest
+            );
+
+
+
+        if (!closeResponse.ok) {
+
+            throw new Error(
+                `CloseIncident falhou. HTTP ${closeResponse.status}`
+            );
+
+        }
+
+
 
         console.log(
             "✅ Case fechado"
         );
 
+
+
+        // =========================================================
+        // 12. ABRIR CASE CRIADO
+        // =========================================================
+
+        console.log(
+            "📂 Abrindo Case criado..."
+        );
+
+
         await Xrm.Navigation.openForm({
-            entityName: "incident",
-            entityId: caseId
+
+            entityName:
+                "incident",
+
+            entityId:
+                caseId
+
         });
 
-        alert(
-            `✅ Processo concluído!\n\n` +
-            `Lead: ${leadNumber}\n` +
-            `Case: ${caseId}\n` +
-            `Vendedor: ${vendedor.nome}\n` +
-            `Status: Resolvido`
+
+
+        // =========================================================
+        // 13. FINALIZAÇÃO
+        // =========================================================
+
+        console.log(
+            "======================================"
         );
+
+        console.log(
+            "🎉 PROCESSO CONCLUÍDO"
+        );
+
+        console.log(
+            "Lead:",
+            leadNumber
+        );
+
+        console.log(
+            "Case:",
+            caseId
+        );
+
+        console.log(
+            "Vendedor:",
+            vendedor.nome
+        );
+
+        console.log(
+            "Status: Resolvido"
+        );
+
+        console.log(
+            "======================================"
+        );
+
+
+        alert(
+
+            `✅ Processo concluído!\n\n` +
+
+            `Lead: ${leadNumber}\n` +
+
+            `Case: ${caseId}\n` +
+
+            `Vendedor: ${vendedor.nome}\n` +
+
+            `Status: Resolvido`
+
+        );
+
 
     } catch (erro) {
 
         console.error(
-            "❌ Erro:",
+            "❌ ERRO:",
             erro
         );
 
+
         alert(
-            `Erro:\n${erro.message || erro}`
+
+            `❌ Erro durante o processo:\n\n` +
+
+            `${erro.message || erro}\n\n` +
+
+            `Verifique o Console para mais detalhes.`
+
         );
 
     }
