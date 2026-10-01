@@ -2,106 +2,365 @@
 
     try {
 
+        console.clear();
+        console.log("====================================");
+        console.log("🚀 LEAD ESSENTRA - VERSÃO 6.0");
+        console.log("====================================");
+
+
+        // =========================================================
+        // CONFIGURAÇÕES
+        // =========================================================
+
         const VENDEDORES = [
+
             {
                 nome: "Cristiana Roseto",
                 id: "df619db6-3a77-eb11-a812-000d3adb5d0d"
             },
+
             {
                 nome: "Pablo Silva",
                 id: "67f1a84e-7471-f011-b4cc-000d3adb1307"
             },
+
             {
                 nome: "Matheus Silva",
                 id: "d46857cf-606e-f011-b4cc-6045bde0e1bb"
             }
+
         ];
+
 
         const QUEUE_ID =
             "{1DC95BFF-6E36-EC11-8C64-000D3ABA5426}";
 
+
         const CAMPANHA_ID =
             "f98d08d3-191e-f111-8341-000d3ab84eef";
+
 
         const LEAD_SOURCE =
             810600002;
 
-        const emailOriginalId =
-            Xrm.Page.data.entity.getId()
-                .replace(/[{}]/g, "");
 
-        let indice =
-            Number(
-                localStorage.getItem("lead_rr") || 0
+
+        // =========================================================
+        // 1. LOCALIZAR EMAIL ABERTO NO POPUP
+        // =========================================================
+
+        console.log("🔎 Procurando email aberto...");
+
+
+        const emailsEncontrados = [];
+
+
+        for (let i = 0; i < window.frames.length; i++) {
+
+            try {
+
+                const frame =
+                    window.frames[i];
+
+
+                const entity =
+                    frame.Xrm?.Page?.data?.entity?.getEntityName?.();
+
+
+                const id =
+                    frame.Xrm?.Page?.data?.entity?.getId?.();
+
+
+                if (
+                    entity === "email" &&
+                    id
+                ) {
+
+                    emailsEncontrados.push({
+
+                        indice: i,
+
+                        frame: frame,
+
+                        id:
+                            id.replace(/[{}]/g, "")
+
+                    });
+
+                }
+
+            } catch (e) {
+
+                // Alguns frames do Dynamics bloqueiam acesso.
+                // Isso é normal e podemos ignorá-los.
+
+            }
+
+        }
+
+
+
+        if (emailsEncontrados.length === 0) {
+
+            alert(
+                "❌ Nenhum email aberto foi encontrado.\n\n" +
+                "Abra o email no popup e execute o script novamente."
             );
 
-        const vendedor =
-            VENDEDORES[indice];
+            return;
 
-        indice =
-            (indice + 1) %
-            VENDEDORES.length;
+        }
 
-        localStorage.setItem(
-            "lead_rr",
-            indice
+
+
+        // Usa o último email encontrado.
+        // Normalmente corresponde ao popup aberto mais recentemente.
+
+        const emailAberto =
+            emailsEncontrados[
+                emailsEncontrados.length - 1
+            ];
+
+
+        const emailFrame =
+            emailAberto.frame;
+
+
+        const emailOriginalId =
+            emailAberto.id;
+
+
+
+        console.log(
+            "✅ Email encontrado no frame:",
+            emailAberto.indice
         );
 
+
+        console.log(
+            "✅ ID do email original:",
+            emailOriginalId
+        );
+
+
+
+        // =========================================================
+        // 2. LER CONTEÚDO DO EMAIL
+        // =========================================================
+
         const texto =
-            document.body.innerText;
+            emailFrame.document.body.innerText;
+
+
+
+        if (!texto) {
+
+            alert(
+                "❌ Não foi possível ler o conteúdo do email."
+            );
+
+            return;
+
+        }
+
+
+
+        console.log(
+            "✅ Conteúdo do email capturado."
+        );
+
+
+
+        // =========================================================
+        // 3. EXTRAIR DADOS DO LEAD
+        // =========================================================
 
         const nomeCompleto =
-            texto.match(/Nome\s+([^\n]+)/)?.[1]?.trim() || "";
+            texto.match(
+                /Nome\s+([^\n]+)/
+            )?.[1]?.trim() || "";
+
 
         const email =
-            texto.match(/E-mail\s+([^\n]+)/)?.[1]?.trim() || "";
+            texto.match(
+                /E-mail\s+([^\n]+)/
+            )?.[1]?.trim() || "";
+
 
         const telefone =
-            texto.match(/Telefone\s+([^\n]+)/)?.[1]?.trim() || "";
+            texto.match(
+                /Telefone\s+([^\n]+)/
+            )?.[1]?.trim() || "";
+
 
         const descricao =
             texto.match(
                 /Escreva aqui o que você precisa\.\s+([^\n]+)/
             )?.[1]?.trim() || "";
 
+
         const cidade =
             texto.match(
                 /Cidade do Usuário\s+([^\n]+)/
             )?.[1]?.trim() || "";
+
 
         const estado =
             texto.match(
                 /Região do Usuário\s+([^\n]+)/
             )?.[1]?.trim() || "";
 
-        if (!nomeCompleto || !email) {
+
+
+        console.log(
+            "===================================="
+        );
+
+        console.log(
+            "📋 DADOS IDENTIFICADOS"
+        );
+
+        console.log(
+            "Nome:",
+            nomeCompleto
+        );
+
+        console.log(
+            "Email:",
+            email
+        );
+
+        console.log(
+            "Telefone:",
+            telefone
+        );
+
+        console.log(
+            "Descrição:",
+            descricao
+        );
+
+        console.log(
+            "Cidade:",
+            cidade
+        );
+
+        console.log(
+            "Estado:",
+            estado
+        );
+
+        console.log(
+            "===================================="
+        );
+
+
+
+        // =========================================================
+        // 4. VALIDAR DADOS OBRIGATÓRIOS
+        // =========================================================
+
+        if (
+            !nomeCompleto ||
+            !email
+        ) {
 
             alert(
-                "Nome ou Email não encontrados."
+                "❌ Nome ou Email não encontrados.\n\n" +
+                "Verifique se o email correto está aberto."
             );
 
             return;
+
         }
 
+
+
+        // =========================================================
+        // 5. SEPARAR FIRSTNAME / LASTNAME
+        // =========================================================
+
         const partes =
-            nomeCompleto.split(" ");
+            nomeCompleto
+                .trim()
+                .split(/\s+/);
+
 
         const firstname =
             partes.shift();
 
+
         const lastname =
             partes.join(" ") || firstname;
+
+
+
+        // =========================================================
+        // 6. ROUND ROBIN DOS VENDEDORES
+        // =========================================================
+
+        let indice =
+            Number(
+                localStorage.getItem(
+                    "lead_rr"
+                ) || 0
+            );
+
+
+
+        // Proteção caso o localStorage tenha valor inválido
+
+        if (
+            Number.isNaN(indice) ||
+            indice < 0 ||
+            indice >= VENDEDORES.length
+        ) {
+
+            indice = 0;
+
+        }
+
+
+
+        const vendedor =
+            VENDEDORES[indice];
+
+
+        const proximoIndice =
+            (indice + 1) %
+            VENDEDORES.length;
+
+
+
+        console.log(
+            "👤 Vendedor selecionado:",
+            vendedor.nome
+        );
+
+
+
+        // =========================================================
+        // 7. CRIAR LEAD
+        // =========================================================
 
         console.log(
             "🚀 Criando Lead..."
         );
 
+
+
         const lead =
             await Xrm.WebApi.createRecord(
+
                 "lead",
+
                 {
-                    firstname,
-                    lastname,
+
+                    firstname:
+                        firstname,
+
+                    lastname:
+                        lastname,
 
                     companyname:
                         nomeCompleto,
@@ -126,75 +385,172 @@
 
                     "campaignid@odata.bind":
                         `/campaigns(${CAMPANHA_ID})`
+
                 }
+
             );
+
+
+
+        const leadId =
+            lead.id.replace(
+                /[{}]/g,
+                ""
+            );
+
+
 
         console.log(
             "✅ Lead criado:",
-            lead.id
+            leadId
         );
 
-        await Xrm.WebApi.updateRecord(
-            "email",
-            emailOriginalId,
-            {
-                "regardingobjectid_lead@odata.bind":
-                    `/leads(${lead.id})`
-            }
+
+
+        // =========================================================
+        // 8. AVANÇAR ROUND ROBIN SOMENTE APÓS CRIAR LEAD
+        // =========================================================
+
+        localStorage.setItem(
+            "lead_rr",
+            proximoIndice
         );
+
+
 
         console.log(
-            "✅ E-mail relacionado ao Lead"
+            "✅ Round Robin atualizado."
         );
 
+
+
+        // =========================================================
+        // 9. RELACIONAR EMAIL ORIGINAL AO LEAD
+        // =========================================================
+
+        console.log(
+            "🔗 Relacionando email original ao Lead..."
+        );
+
+
+
         await Xrm.WebApi.updateRecord(
-            "lead",
-            lead.id,
+
+            "email",
+
+            emailOriginalId,
+
             {
+
+                "regardingobjectid_lead@odata.bind":
+                    `/leads(${leadId})`
+
+            }
+
+        );
+
+
+
+        console.log(
+            "✅ Email original relacionado ao Lead."
+        );
+
+
+
+        // =========================================================
+        // 10. ATRIBUIR LEAD AO VENDEDOR
+        // =========================================================
+
+        console.log(
+            "👤 Atribuindo Lead para:",
+            vendedor.nome
+        );
+
+
+
+        await Xrm.WebApi.updateRecord(
+
+            "lead",
+
+            leadId,
+
+            {
+
                 "ownerid@odata.bind":
                     `/systemusers(${vendedor.id})`
+
             }
+
         );
+
+
 
         console.log(
             "✅ Lead atribuído:",
             vendedor.nome
         );
 
+
+
+        // =========================================================
+        // 11. CRIAR EMAIL DE RESPOSTA
+        // =========================================================
+
+        console.log(
+            "📧 Criando email de resposta..."
+        );
+
+
+
         const emailResposta =
             await Xrm.WebApi.createRecord(
+
                 "email",
+
                 {
+
                     subject:
                         "Contato Essentra",
 
                     description:
-`Olá ${firstname},
-
-Muito obrigado pelo seu contato com a Essentra Components.
-
-Recebemos sua solicitação e para que possamos dar continuidade ao atendimento, poderia nos informar o CNPJ da empresa?
-
-Assim que recebermos essa informação, retornaremos o mais breve possível.
-
-Atenciosamente,
-
-${vendedor.nome}`,
+`Olá ${firstname},<br><br>Muito obrigado pelo seu contato com a Essentra Components.<br><br>Recebemos sua solicitação e para que possamos dar continuidade ao atendimento, poderia nos informar o CNPJ da empresa?<br><br>Assim que recebermos essa informação, retornaremos o mais breve possível.<br><br>Atenciosamente,<br><br>${vendedor.nome}`,
 
                     "regardingobjectid_lead@odata.bind":
-                        `/leads(${lead.id})`
+                        `/leads(${leadId})`
+
                 }
+
             );
 
+
+
+        const emailRespostaId =
+            emailResposta.id.replace(
+                /[{}]/g,
+                ""
+            );
+
+
+
         console.log(
-            "✅ Email criado:",
-            emailResposta.id
+            "✅ Email de resposta criado:",
+            emailRespostaId
         );
+
+
+
+        // =========================================================
+        // 12. SALVAR HISTÓRICO LOCAL
+        // =========================================================
 
         const historico =
             JSON.parse(
-                localStorage.getItem("lead_log") || "[]"
+                localStorage.getItem(
+                    "lead_log"
+                ) || "[]"
             );
+
+
 
         historico.push({
 
@@ -202,13 +558,13 @@ ${vendedor.nome}`,
                 new Date().toISOString(),
 
             leadId:
-                lead.id,
+                leadId,
 
             emailOriginalId:
                 emailOriginalId,
 
             emailRespostaId:
-                emailResposta.id,
+                emailRespostaId,
 
             nome:
                 nomeCompleto,
@@ -229,98 +585,441 @@ ${vendedor.nome}`,
                 "AguardandoResposta",
 
             versao:
-                "5.2"
+                "6.0"
+
         });
+
+
 
         localStorage.setItem(
             "lead_log",
-            JSON.stringify(historico)
+            JSON.stringify(
+                historico
+            )
         );
+
+
+
+        // =========================================================
+        // 13. SALVAR ÚLTIMO LEAD
+        // =========================================================
 
         localStorage.setItem(
+
             "ultimoLead",
+
             JSON.stringify({
-                leadId: lead.id,
-                emailOriginalId,
-                emailRespostaId: emailResposta.id,
-                nome: nomeCompleto,
-                email,
-                vendedor: vendedor.nome,
-                dataCriacao: new Date().toISOString()
+
+                leadId:
+                    leadId,
+
+                emailOriginalId:
+                    emailOriginalId,
+
+                emailRespostaId:
+                    emailRespostaId,
+
+                nome:
+                    nomeCompleto,
+
+                email:
+                    email,
+
+                vendedor:
+                    vendedor.nome,
+
+                dataCriacao:
+                    new Date().toISOString()
+
             })
+
         );
 
+
+
+        console.log(
+            "✅ Histórico salvo."
+        );
+
+
+
+        // =========================================================
+        // 14. ABRIR EMAIL DE RESPOSTA
+        // =========================================================
+
+        console.log(
+            "📨 Abrindo email de resposta..."
+        );
+
+
+
         await Xrm.Navigation.openForm({
-            entityName: "email",
-            entityId: emailResposta.id
+
+            entityName:
+                "email",
+
+            entityId:
+                emailRespostaId
+
         });
 
-        setTimeout(async () => {
 
-            try {
 
-                Xrm.Page.getAttribute("to")
-                    .setValue([
-                        {
-                            entityType:
-                                "unresolvedaddress",
+        // =========================================================
+        // 15. LOCALIZAR O NOVO EMAIL ABERTO
+        // =========================================================
+        //
+        // O Dynamics agora trabalha com múltiplos frames.
+        // Portanto não utilizamos simplesmente Xrm.Page.
+        //
+        // Procuramos especificamente o formulário cujo:
+        //
+        // entity = email
+        // id = emailRespostaId
+        //
+        // =========================================================
 
-                            id:
-                                "{00000000-0000-0000-0000-000000000000}",
 
-                            name:
-                                email
+        console.log(
+            "⏳ Aguardando formulário do novo email carregar..."
+        );
+
+
+
+        let tentativas =
+            0;
+
+
+        const MAX_TENTATIVAS =
+            15;
+
+
+
+        const localizarEmailResposta =
+            setInterval(
+
+                async () => {
+
+                    tentativas++;
+
+
+                    console.log(
+                        `🔎 Procurando formulário do email (${tentativas}/${MAX_TENTATIVAS})...`
+                    );
+
+
+
+                    let frameResposta =
+                        null;
+
+
+
+                    for (
+                        let i = 0;
+                        i < window.frames.length;
+                        i++
+                    ) {
+
+                        try {
+
+                            const frame =
+                                window.frames[i];
+
+
+                            const entity =
+                                frame.Xrm
+                                    ?.Page
+                                    ?.data
+                                    ?.entity
+                                    ?.getEntityName
+                                    ?.();
+
+
+                            const id =
+                                frame.Xrm
+                                    ?.Page
+                                    ?.data
+                                    ?.entity
+                                    ?.getId
+                                    ?.()
+                                    ?.replace(
+                                        /[{}]/g,
+                                        ""
+                                    )
+                                    ?.toLowerCase();
+
+
+                            if (
+                                entity === "email" &&
+                                id ===
+                                    emailRespostaId.toLowerCase()
+                            ) {
+
+                                frameResposta =
+                                    frame;
+
+                                console.log(
+                                    "✅ Formulário do novo email encontrado no frame:",
+                                    i
+                                );
+
+                                break;
+
+                            }
+
+
+                        } catch (e) {
+
+                            // Ignora frames sem acesso
+
                         }
-                    ]);
 
-                console.log(
-                    "✅ TO preenchido"
-                );
+                    }
 
-                Xrm.Page.getAttribute("from")
-                    .setValue([
-                        {
-                            entityType:
-                                "queue",
 
-                            id:
-                                QUEUE_ID,
 
-                            name:
-                                "CBR Sales"
+                    if (!frameResposta) {
+
+                        if (
+                            tentativas >=
+                            MAX_TENTATIVAS
+                        ) {
+
+                            clearInterval(
+                                localizarEmailResposta
+                            );
+
+
+                            console.warn(
+                                "⚠️ Não foi possível localizar o formulário do novo email."
+                            );
+
+
+                            alert(
+                                "Lead criado com sucesso!\n\n" +
+                                "Vendedor: " +
+                                vendedor.nome +
+                                "\n\n" +
+                                "O email de resposta também foi criado, " +
+                                "mas TO e FROM precisam ser conferidos manualmente."
+                            );
+
                         }
-                    ]);
 
-                console.log(
-                    "✅ FROM preenchido"
-                );
 
-                await Xrm.Page.data.save();
+                        return;
 
-                console.log(
-                    "✅ Email salvo"
-                );
+                    }
 
-            } catch (erro) {
 
-                console.error(
-                    "Erro ao preencher email",
-                    erro
-                );
 
-            }
+                    // Encontramos o formulário.
+                    // Para de procurar.
 
-        }, 5000);
+                    clearInterval(
+                        localizarEmailResposta
+                    );
+
+
+
+                    // =================================================
+                    // 16. PREENCHER TO E FROM
+                    // =================================================
+
+                    try {
+
+                        const emailXrm =
+                            frameResposta.Xrm;
+
+
+
+                        const campoTo =
+                            emailXrm.Page
+                                .getAttribute(
+                                    "to"
+                                );
+
+
+                        const campoFrom =
+                            emailXrm.Page
+                                .getAttribute(
+                                    "from"
+                                );
+
+
+
+                        if (!campoTo) {
+
+                            throw new Error(
+                                "Campo TO não encontrado."
+                            );
+
+                        }
+
+
+                        if (!campoFrom) {
+
+                            throw new Error(
+                                "Campo FROM não encontrado."
+                            );
+
+                        }
+
+
+
+                        // ---------------------------------------------
+                        // TO
+                        // ---------------------------------------------
+
+                        campoTo.setValue([
+
+                            {
+
+                                entityType:
+                                    "unresolvedaddress",
+
+                                id:
+                                    "{00000000-0000-0000-0000-000000000000}",
+
+                                name:
+                                    email
+
+                            }
+
+                        ]);
+
+
+
+                        console.log(
+                            "✅ TO preenchido:",
+                            email
+                        );
+
+
+
+                        // ---------------------------------------------
+                        // FROM
+                        // ---------------------------------------------
+
+                        campoFrom.setValue([
+
+                            {
+
+                                entityType:
+                                    "queue",
+
+                                id:
+                                    QUEUE_ID,
+
+                                name:
+                                    "CBR Sales"
+
+                            }
+
+                        ]);
+
+
+
+                        console.log(
+                            "✅ FROM preenchido: CBR Sales"
+                        );
+
+
+
+                        // ---------------------------------------------
+                        // SALVAR
+                        // ---------------------------------------------
+
+                        await emailXrm.Page
+                            .data
+                            .save();
+
+
+
+                        console.log(
+                            "✅ Email salvo."
+                        );
+
+
+                        console.log(
+                            "===================================="
+                        );
+
+                        console.log(
+                            "🎉 PROCESSO CONCLUÍDO"
+                        );
+
+                        console.log(
+                            "Lead:",
+                            nomeCompleto
+                        );
+
+                        console.log(
+                            "Vendedor:",
+                            vendedor.nome
+                        );
+
+                        console.log(
+                            "Email:",
+                            email
+                        );
+
+                        console.log(
+                            "===================================="
+                        );
+
+
+
+                        alert(
+                            "✅ Lead criado com sucesso!\n\n" +
+                            "Lead: " +
+                            nomeCompleto +
+                            "\n" +
+                            "Vendedor: " +
+                            vendedor.nome +
+                            "\n\n" +
+                            "Confira o email antes de enviar."
+                        );
+
+
+                    } catch (erroEmail) {
+
+                        console.error(
+                            "❌ Erro ao preencher TO/FROM:",
+                            erroEmail
+                        );
+
+
+                        alert(
+                            "Lead criado com sucesso!\n\n" +
+                            "Vendedor: " +
+                            vendedor.nome +
+                            "\n\n" +
+                            "Porém houve um erro ao preencher TO/FROM.\n" +
+                            "Confira o email manualmente."
+                        );
+
+                    }
+
+
+                },
+
+                1000
+
+            );
+
 
     } catch (erro) {
 
         console.error(
-            "❌ Erro geral",
+            "❌ ERRO GERAL:",
             erro
         );
 
+
         alert(
-            "Erro durante a execução. Verifique o Console."
+            "❌ Erro durante a execução.\n\n" +
+            "Verifique o Console para mais detalhes."
         );
 
     }
