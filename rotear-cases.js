@@ -31,6 +31,68 @@
   const eh = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   const dataBR = (s) => { try { return s ? new Date(s).toLocaleString("pt-BR") : "-"; } catch { return s || "-"; } };
 
+  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  async function aguardarDynamicsEGrid() {
+    const inicio = Date.now();
+    const TIMEOUT_MS = 30000;
+    const INTERVALO_MS = 350;
+    const ESTABILIZACOES_NECESSARIAS = 4;
+
+    console.log("[ROUTER] Aguardando Dynamics e Web API...");
+
+    while (Date.now() - inicio < TIMEOUT_MS) {
+      if (window.Xrm?.WebApi?.retrieveRecord && window.Xrm?.WebApi?.updateRecord) break;
+      await sleep(INTERVALO_MS);
+    }
+
+    if (!window.Xrm?.WebApi) {
+      throw new Error("Xrm.WebApi não ficou disponível dentro de 30 segundos.");
+    }
+
+    console.log("[ROUTER] Dynamics disponível. Aguardando grid...");
+
+    let ultimaAssinatura = "";
+    let consecutivas = 0;
+    let ultimaQuantidade = 0;
+
+    while (Date.now() - inicio < TIMEOUT_MS) {
+      const rows = Array.from(document.querySelectorAll(".ag-row"));
+      const assinatura = rows.map(row => [
+        row.getAttribute("row-id") || "",
+        row.querySelector('[col-id="title"]')?.innerText?.trim() || "",
+        row.querySelector('[col-id*="ticketnumber"]')?.innerText?.trim() || ""
+      ].join("|")).join("||");
+
+      if (rows.length > 0 && assinatura && assinatura === ultimaAssinatura) {
+        consecutivas++;
+      } else {
+        consecutivas = 0;
+      }
+
+      if (rows.length !== ultimaQuantidade) {
+        console.log(`[ROUTER] ${rows.length} linha(s) detectada(s)...`);
+        ultimaQuantidade = rows.length;
+      }
+
+      if (rows.length > 0 && consecutivas >= ESTABILIZACOES_NECESSARIAS) {
+        console.log(`[ROUTER] Grid estabilizada com ${rows.length} linha(s).`);
+        return rows;
+      }
+
+      ultimaAssinatura = assinatura;
+      await sleep(INTERVALO_MS);
+    }
+
+    const rowsFinais = Array.from(document.querySelectorAll(".ag-row"));
+    if (rowsFinais.length > 0) {
+      console.warn(`[ROUTER] Timeout de estabilização. Prosseguindo com ${rowsFinais.length} linha(s) visíveis.`);
+      return rowsFinais;
+    }
+
+    throw new Error("Nenhuma linha foi encontrada na grid após aguardar 30 segundos.");
+  }
+
   function proximo(storageKey, fila) {
     if (!fila.length) return null;
     let i = Number(localStorage.getItem(storageKey) || 0);
@@ -46,10 +108,14 @@
 
   try {
     console.clear();
-    const rows = document.querySelectorAll(".ag-row");
-    if (!rows.length) { alert("Nenhuma linha foi encontrada na grid atual."); return; }
+    console.log("[ROUTER] V4.3.2 iniciada.");
+    const rows = await aguardarDynamicsEGrid();
+    console.log(`[ROUTER] Iniciando processamento de ${rows.length} Case(s).`);
 
+    let indiceProcessamento = 0;
     for (const row of rows) {
+      indiceProcessamento++;
+      console.log(`[ROUTER] Processando ${indiceProcessamento}/${rows.length}...`);
       let titulo = "", territorio = "", fila = "", ticket = "", codigo = "", caseId = null;
       try {
         titulo = row.querySelector('[col-id="title"]')?.innerText?.trim() || "";
@@ -112,6 +178,7 @@
       }
     }
 
+    console.log(`[ROUTER] Concluído. ✅ ${processados} roteado(s), ⚠ ${naoRoteados} pendente(s), ❌ ${erros} erro(s).`);
     abrirPainel();
   } catch (e) {
     console.error(e);
