@@ -108,7 +108,7 @@
 
   try {
     console.clear();
-    console.log("[ROUTER] V4.3.2 iniciada.");
+    console.log("[ROUTER] V4.4.1 iniciada.");
     const rows = await aguardarDynamicsEGrid();
     console.log(`[ROUTER] Iniciando processamento de ${rows.length} Case(s).`);
 
@@ -246,7 +246,18 @@
     let cacheSubjects = null;
     async function buscarSubjects(){ if(cacheSubjects) return cacheSubjects; const r=await Xrm.WebApi.retrieveMultipleRecords("subject","?$select=subjectid,title,_parentsubject_value&$orderby=title asc",5000); cacheSubjects=(r.entities||[]).filter(x=>x.subjectid&&x.title); return cacheSubjects; }
     async function obterCaseReason(caseId){ const r=await Xrm.WebApi.retrieveRecord("incident",caseId,"?$select=_subjectid_value"); const id=guid(r._subjectid_value||""); if(!id)return null; const ss=await buscarSubjects(); const x=ss.find(a=>guid(a.subjectid)===id); return x?{id:guid(x.subjectid),title:x.title}:null; }
-    async function classificarCase(caseId,subjectId){ await Xrm.WebApi.updateRecord("incident",caseId,{"subjectid@odata.bind":`/subjects(${guid(subjectId)})`}); }
+    const EMAIL_STATUS_CUSTOMER_RESPONDED = 971970002;
+    const CASE_STATUS_IN_PROGRESS = 1;
+    async function classificarCase(caseId, subjectId) {
+      if (!caseId) throw new Error("Case ID não disponível.");
+      if (!subjectId) throw new Error("Case Reason não disponível.");
+      await Xrm.WebApi.updateRecord("incident", guid(caseId), {
+        "subjectid@odata.bind": `/subjects(${guid(subjectId)})`,
+        "cuk_emailstatus": EMAIL_STATUS_CUSTOMER_RESPONDED,
+        "statuscode": CASE_STATUS_IN_PROGRESS
+      });
+      return true;
+    }
 
     const style = document.createElement("style");
     style.id = "fg-case-router-style";
@@ -304,43 +315,113 @@
     const bulkDest = modal.querySelector("#fg-bulk-dest");
     bulkDest.innerHTML = `<option value="">Selecione o destino</option>` + USUARIOS_MANUAIS.map(u => `<option value="${eh(u.id)}">${eh(u.nome)}</option>`).join("") + `<option value="queue:junk">Junk</option>`;
     function atualizarBulk(){ modal.querySelector("#fg-bulk-count").textContent = `${selecionados.size} selecionado(s)`; }
-    modal.querySelector("#fg-select-visible").onclick = () => { filtrados().forEach(r => selecionados.add(r.caseId)); renderizarLista(); atualizarBulk(); };
-    modal.querySelector("#fg-select-pending").onclick = () => { resultados.filter(r => r.status === "pendente").forEach(r => selecionados.add(r.caseId)); renderizarLista(); atualizarBulk(); };
+    modal.querySelector("#fg-select-visible").onclick = () => { filtrados().filter(r => r.caseId).forEach(r => selecionados.add(r.caseId)); renderizarLista(); atualizarBulk(); };
+    modal.querySelector("#fg-select-pending").onclick = () => { resultados.filter(r => r.status === "pendente" && r.caseId).forEach(r => selecionados.add(r.caseId)); renderizarLista(); atualizarBulk(); };
     modal.querySelector("#fg-clear-selection").onclick = () => { selecionados.clear(); renderizarLista(); atualizarBulk(); };
     modal.querySelector("#fg-bulk-route").onclick = async function(){
       const destino = bulkDest.value;
-      const itens = resultados.filter(r => selecionados.has(r.caseId));
+      const itens = resultados.filter(r => r.caseId && selecionados.has(r.caseId));
       if (!itens.length) return alert("Selecione pelo menos um Case.");
       if (!destino) return alert("Selecione um destino.");
       const nome = destino === "queue:junk" ? "Junk" : (USUARIOS_MANUAIS.find(u => guid(u.id)===guid(destino))?.nome || "destino");
       if (!confirm(`Rotear ${itens.length} Case(s) para ${nome}?`)) return;
-      this.disabled=true; let ok=0, falhas=[];
-      for (let i=0;i<itens.length;i++){
-        this.textContent=`ROTEANDO ${i+1}/${itens.length}...`;
-        const item=itens[i], anterior=item.status;
-        try { await rotearParaDestino(item,destino); if(anterior==="pendente"){naoRoteados=Math.max(0,naoRoteados-1);processados++} else if(anterior==="erro"){erros=Math.max(0,erros-1);processados++} ok++; selecionados.delete(item.caseId); }
-        catch(e){ falhas.push(`${item.ticket||item.caseId}: ${e?.message||String(e)}`); }
+
+      const botao = this;
+      botao.disabled = true;
+      bulkDest.disabled = true;
+      let ok = 0, falhas = [];
+
+      try {
+        for (let i = 0; i < itens.length; i++) {
+          const item = itens[i];
+          botao.textContent = `ROTEANDO ${i+1}/${itens.length}...`;
+          const anterior = item.status;
+          try {
+            await rotearParaDestino(item, destino);
+            if (anterior === "pendente") { naoRoteados = Math.max(0, naoRoteados - 1); processados++; }
+            else if (anterior === "erro") { erros = Math.max(0, erros - 1); processados++; }
+            selecionados.delete(item.caseId);
+            ok++;
+            atualizarContadores();
+            atualizarBulk();
+            renderizarLista();
+            if (selecionado && guid(selecionado.caseId) === guid(item.caseId)) {
+              renderizarDetalhes(item);
+            }
+            await sleep(180);
+          } catch (e) {
+            const msg = e?.message || String(e);
+            falhas.push(`${item.ticket || item.caseId}: ${msg}`);
+            console.error(`[BULK] Erro ao rotear ${item.ticket || item.caseId}:`, e);
+            atualizarBulk();
+            renderizarLista();
+            await sleep(180);
+          }
+        }
+      } finally {
+        botao.disabled = false;
+        bulkDest.disabled = false;
+        botao.textContent = "ROTEAR SELECIONADOS";
+        atualizarContadores();
+        atualizarBulk();
+        renderizarLista();
       }
-      this.disabled=false; this.textContent="ROTEAR SELECIONADOS"; atualizarContadores(); renderizarLista(); atualizarBulk();
-      alert(`Roteamento em massa concluído.\n\n✅ ${ok} processado(s)\n❌ ${falhas.length} erro(s)` + (falhas.length ? `\n\n${falhas.slice(0,8).join("\n")}` : ""));
+
+      alert(`Roteamento em massa concluído.\n\n✅ ${ok} roteado(s)\n❌ ${falhas.length} erro(s)` +
+        (falhas.length ? `\n\nCases com erro permanecem selecionados:\n${falhas.slice(0,10).join("\n")}` : ""));
     };
     const bulkReason=modal.querySelector("#fg-bulk-reason");
     buscarSubjects().then(ss=>{bulkReason.innerHTML='<option value="">Selecione o Case Reason</option>'+ss.map(x=>`<option value="${eh(guid(x.subjectid))}">${eh(x.title)}</option>`).join("")}).catch(e=>console.warn("Não foi possível carregar Case Reasons",e));
     modal.querySelector("#fg-bulk-classify").onclick=async function(){
-      const itens=resultados.filter(r=>selecionados.has(r.caseId));if(!itens.length)return alert("Selecione pelo menos um Case.");
-      const id=bulkReason.value;if(!id)return alert("Selecione um Case Reason.");
-      try{
-        const ss=await buscarSubjects(),sub=ss.find(x=>guid(x.subjectid)===guid(id));
-        if(!sub)return alert("Case Reason não encontrado.");
-        if(!confirm(`Aplicar '${sub.title}' a ${itens.length} Case(s)?`))return;
-        this.disabled=true;let ok=0,falhas=[];
-        for(let i=0;i<itens.length;i++){
-          this.textContent=`CLASSIFICANDO ${i+1}/${itens.length}...`;
-          try{await classificarCase(itens[i].caseId,id);ok++}catch(e){falhas.push(`${itens[i].ticket||itens[i].caseId}: ${e?.message||String(e)}`)}
+      const itens = resultados.filter(r => r.caseId && selecionados.has(r.caseId));
+      if (!itens.length) return alert("Selecione pelo menos um Case.");
+      const id = bulkReason.value;
+      if (!id) return alert("Selecione um Case Reason.");
+      const botao = this;
+
+      try {
+        const ss = await buscarSubjects();
+        const sub = ss.find(x => guid(x.subjectid) === guid(id));
+        if (!sub) return alert("Case Reason não encontrado.");
+        if (!confirm(`Aplicar '${sub.title}' a ${itens.length} Case(s)?\n\nTambém será aplicado:\n• Email status: Customer has responded\n• Case Status: In Progress`)) return;
+
+        botao.disabled = true;
+        bulkReason.disabled = true;
+        let ok = 0, falhas = [];
+
+        for (let i = 0; i < itens.length; i++) {
+          const item = itens[i];
+          botao.textContent = `CLASSIFICANDO ${i+1}/${itens.length}...`;
+          try {
+            await classificarCase(item.caseId, id);
+            item.caseReason = { id: guid(id), title: sub.title };
+            item.emailStatus = "Customer has responded";
+            item.caseStatus = "In Progress";
+            selecionados.delete(item.caseId);
+            ok++;
+            atualizarBulk();
+            renderizarLista();
+            await sleep(180);
+          } catch (e) {
+            const msg = e?.message || String(e);
+            falhas.push(`${item.ticket || item.caseId}: ${msg}`);
+            console.error(`[CLASSIFICACAO] Erro em ${item.ticket || item.caseId}:`, e);
+            atualizarBulk();
+            await sleep(180);
+          }
         }
-        this.disabled=false;this.textContent="CLASSIFICAR SELECIONADOS";
-        alert(`Classificação concluída.\n\n✅ ${ok} classificado(s)\n❌ ${falhas.length} erro(s)`+(falhas.length?`\n\n${falhas.slice(0,8).join("\n")}`:""));
-      }catch(e){this.disabled=false;this.textContent="CLASSIFICAR SELECIONADOS";alert("Erro ao classificar: "+(e?.message||String(e)))}
+
+        alert(`Classificação concluída.\n\n✅ ${ok} classificado(s)\n❌ ${falhas.length} erro(s)\n\nAplicado nos concluídos:\n• Case Reason: ${sub.title}\n• Email status: Customer has responded\n• Case Status: In Progress` +
+          (falhas.length ? `\n\nCases com erro permanecem selecionados:\n${falhas.slice(0,10).join("\n")}` : ""));
+      } catch(e) {
+        alert("Erro ao classificar: " + (e?.message || String(e)));
+      } finally {
+        botao.disabled = false;
+        bulkReason.disabled = false;
+        botao.textContent = "CLASSIFICAR SELECIONADOS";
+        atualizarBulk();
+        renderizarLista();
+      }
     };
     atualizarBulk();
 
