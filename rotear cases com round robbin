@@ -117,7 +117,7 @@
 
   try {
     console.clear();
-    console.log("[ROUTER] V4.7.1 iniciada.");
+    console.log("[ROUTER] V4.8 iniciada.");
     const rows = await aguardarDynamicsEGrid();
     console.log(`[ROUTER] Iniciando processamento de ${rows.length} Case(s).`);
 
@@ -252,7 +252,31 @@
     async function buscarSubjects(){ if(cacheSubjects) return cacheSubjects; const r=await Xrm.WebApi.retrieveMultipleRecords("subject","?$select=subjectid,title,_parentsubject_value&$orderby=title asc",5000); cacheSubjects=(r.entities||[]).filter(x=>x.subjectid&&x.title); return cacheSubjects; }
     async function obterCaseReason(caseId){ const r=await Xrm.WebApi.retrieveRecord("incident",caseId,"?$select=_subjectid_value"); const id=guid(r._subjectid_value||""); if(!id)return null; const ss=await buscarSubjects(); const x=ss.find(a=>guid(a.subjectid)===id); return x?{id:guid(x.subjectid),title:x.title}:null; }
     const EMAIL_STATUS_CUSTOMER_RESPONDED=971970002, CASE_STATUS_IN_PROGRESS=1;
-    async function classificarCase(caseId,subjectId){await Xrm.WebApi.updateRecord("incident",guid(caseId),{"subjectid@odata.bind":`/subjects(${guid(subjectId)})`,cuk_emailstatus:EMAIL_STATUS_CUSTOMER_RESPONDED,statuscode:CASE_STATUS_IN_PROGRESS});}
+    async function lerEstadoClassificacao(caseId) {
+      const r = await Xrm.WebApi.retrieveRecord("incident", guid(caseId), "?$select=_subjectid_value,cuk_emailstatus,statuscode");
+      return { subjectId: guid(r._subjectid_value || ""), emailStatus: r.cuk_emailstatus, statusCode: r.statuscode };
+    }
+    async function classificarCase(caseId, subjectId) {
+      caseId = guid(caseId); subjectId = guid(subjectId);
+      await Xrm.WebApi.updateRecord("incident", caseId, {
+        "subjectid@odata.bind": `/subjects(${subjectId})`,
+        cuk_emailstatus: EMAIL_STATUS_CUSTOMER_RESPONDED,
+        statuscode: CASE_STATUS_IN_PROGRESS
+      });
+      await sleep(250);
+      const gravado = await lerEstadoClassificacao(caseId);
+      const divergencias = [];
+      if (gravado.subjectId !== subjectId) divergencias.push("Case Reason não foi confirmado");
+      if (Number(gravado.emailStatus) !== EMAIL_STATUS_CUSTOMER_RESPONDED) divergencias.push("Email status não ficou como Customer has responded");
+      if (Number(gravado.statusCode) !== CASE_STATUS_IN_PROGRESS) divergencias.push("Case Status não ficou como In Progress");
+      if (divergencias.length) {
+        const e = new Error("Classificação não confirmada no Case: " + divergencias.join("; ") + ". Verifique os campos obrigatórios do Case, como Cliente/Customer, e tente novamente.");
+        e.name = "ClassificacaoNaoConfirmada";
+        e.verificacao = gravado;
+        throw e;
+      }
+      return gravado;
+    }
 
     const style = document.createElement("style");
     style.id = "fg-case-router-style";
@@ -342,7 +366,7 @@
         this.disabled=true;let ok=0,falhas=[];
         for(let i=0;i<itens.length;i++){
           this.textContent=`CLASSIFICANDO ${i+1}/${itens.length}...`;
-          try{await classificarCase(itens[i].caseId,id);itens[i].caseReason={id:guid(id),title:sub.title};selecionados.delete(itens[i].caseId);ok++;renderizarLista();atualizarBulk();}catch(e){falhas.push(`${itens[i].ticket||itens[i].caseId}: ${e?.message||String(e)}`)}
+          try{await classificarCase(itens[i].caseId,id);itens[i].caseReason={id:guid(id),title:sub.title};itens[i].classificacaoStatus="ok";itens[i].classificacaoErro=null;selecionados.delete(itens[i].caseId);ok++;renderizarLista();atualizarBulk();}catch(e){itens[i].classificacaoStatus="incompleta";itens[i].classificacaoErro=e?.message||String(e);selecionados.add(itens[i].caseId);falhas.push(`${itens[i].ticket||itens[i].caseId}: ${e?.message||String(e)}`);renderizarLista();atualizarBulk();}
         }
         this.disabled=false;this.textContent="CLASSIFICAR SELECIONADOS";
         alert(`Classificação concluída.\n\n✅ ${ok} classificado(s)\n❌ ${falhas.length} erro(s)`+(falhas.length?`\n\n${falhas.slice(0,8).join("\n")}`:""));
@@ -364,7 +388,7 @@
       list.innerHTML = f.map((r) => {
         const idx = resultados.indexOf(r);
         const badge = r.status === "roteado" ? '<span class="fg-badge fg-badge-ok">✓ ROTEADO</span>' : r.status === "pendente" ? '<span class="fg-badge fg-badge-warning">⚠ NÃO ROTEADO</span>' : '<span class="fg-badge fg-badge-error">✕ ERRO</span>';
-        return `<div class="fg-item ${selecionado === r ? "selected" : ""}" data-index="${idx}"><div><input type="checkbox" class="fg-check" data-check-index="${idx}" ${selecionados.has(r.caseId) ? "checked" : ""}>${badge}</div><div class="fg-ticket">${eh(r.ticket || "Sem ticket")}</div><div class="fg-title">${eh(r.titulo)}</div><div class="fg-meta">Território: ${eh(r.codigo || "-")} &nbsp;•&nbsp; Fila: ${eh(r.fila || "-")}${r.usuario ? `<br>→ ${eh(r.usuario.nome)}` : ""}${r.caseReason ? `<br>✓ Case Reason: <strong>${eh(r.caseReason.title)}</strong>` : ""}</div></div>`;
+        return `<div class="fg-item ${selecionado === r ? "selected" : ""}" data-index="${idx}"><div><input type="checkbox" class="fg-check" data-check-index="${idx}" ${selecionados.has(r.caseId) ? "checked" : ""}>${badge}</div><div class="fg-ticket">${eh(r.ticket || "Sem ticket")}</div><div class="fg-title">${eh(r.titulo)}</div><div class="fg-meta">Território: ${eh(r.codigo || "-")} &nbsp;•&nbsp; Fila: ${eh(r.fila || "-")}${r.usuario ? `<br>→ ${eh(r.usuario.nome)}` : ""}${r.caseReason ? `<br>✓ Case Reason: <strong>${eh(r.caseReason.title)}</strong>` : ""}${r.classificacaoStatus === "incompleta" ? `<br><span style="color:#b91c1c;font-weight:700">⚠ CLASSIFICAÇÃO NÃO CONFIRMADA</span>` : ""}</div></div>`;
       }).join("");
       list.querySelectorAll(".fg-item").forEach((el) => el.onclick = function (ev) {
         if (ev.target.classList.contains("fg-check")) return;
@@ -383,6 +407,7 @@
 <div class="fg-section"><div class="fg-section-title">Informações</div><div class="fg-info-grid"><div class="fg-info"><div class="fg-info-label">Status</div><div class="fg-info-value">${status}</div></div><div class="fg-info"><div class="fg-info-label">Território</div><div class="fg-info-value">${eh(item.territorio || item.codigo || "-")}</div></div><div class="fg-info"><div class="fg-info-label">Fila</div><div class="fg-info-value">${eh(item.fila || "-")}</div></div><div class="fg-info"><div class="fg-info-label">Case ID</div><div class="fg-info-value">${eh(item.caseId || "-")}</div></div></div></div>
 <div class="fg-section"><div class="fg-section-title">Decisão do roteamento</div><div class="fg-rule"><strong>${eh(item.regra)}</strong><br>${eh(item.detalheRegra || "-")}</div></div>
 <div class="fg-section"><div class="fg-section-title">Classificação do Case</div><div class="fg-class-box"><div class="fg-class-current"><strong>Case Reason atual:</strong> ${item.caseReason ? `✅ ${eh(item.caseReason.title)}` : "○ Não classificado"}</div><div style="font-size:11px;color:#6b7280">Lido diretamente do Case no Dataverse.</div></div></div>
+${item.classificacaoStatus === "incompleta" ? `<div class="fg-section"><div class="fg-section-title">Validação da classificação</div><div class="fg-email-error"><strong>⚠ Classificação não confirmada.</strong><br>${eh(item.classificacaoErro || "Verifique os campos obrigatórios do Case.")}</div></div>` : ""}
 ${item.erro ? `<div class="fg-section"><div class="fg-section-title">Erro</div><div class="fg-email-error">${eh(item.erro)}</div></div>` : ""}
 <div class="fg-section"><div class="fg-section-title">Base de Clientes</div><div class="fg-client-box"><div id="fg-base-status" class="fg-base-status"></div><div class="fg-client-top"><input id="fg-client-search" class="fg-client-search" placeholder="Nome do cliente, CCUST ou CNPJ"><button id="fg-client-find" class="fg-btn fg-btn-secondary">BUSCAR</button><button id="fg-client-import" class="fg-btn fg-btn-secondary">BASE</button><input id="fg-client-file" type="file" accept=".xlsx,.xls" style="display:none"></div><div id="fg-client-results"></div></div></div>
 <div class="fg-section"><div class="fg-section-title">Roteamento manual</div><div class="fg-routing"><select class="fg-select" id="fg-manual-user"><option value="">Selecione o destino</option>${opts}</select><button class="fg-btn fg-btn-primary" id="fg-route-manual">ROTEAR CASE</button><button class="fg-btn fg-btn-secondary" id="fg-open-case">ABRIR CASE</button></div><div id="fg-route-feedback" style="margin-top:8px;font-size:12px"></div></div>
