@@ -15,7 +15,7 @@
   const FILA_343_344 = [USUARIOS["338"], USUARIOS["340"], USUARIOS["346"]];
   const REGEX_COTACAO = /cotac|cotar|orcament|amostra|sample/i;
   const REGEX_ATENDIMENTO = /fup|follow|release|pedido|purchase|posicao de entrega|posição de entrega|nota fiscal|ordem de compra|\bnf\b|boleto/i;
-  const REGEX_LUCIMARA = /\b(weg|mwm)\b/i;
+  const REGEX_LUCIMARA = /\b(weg|mwm|elgin)\b/i;
   const REGEX_JOST = /\bjost\b/i;
   const USUARIOS_MANUAIS = [FILIPE, USUARIOS["335"], USUARIOS["337"], USUARIOS["338"], USUARIOS["340"], USUARIOS["346"], CRISTINA, LILIAN, JULIANA];
 
@@ -145,8 +145,8 @@
           usuario = USUARIOS["337"]; regra = "Cliente JOST"; detalheRegra = "Palavra-chave JOST identificada no título. Prioridade para Bruna Giovanini.";
         } else if (codigo === "335" || REGEX_LUCIMARA.test(tituloN)) {
           usuario = USUARIOS["335"];
-          regra = codigo === "335" ? "Território 335" : "Palavra-chave WEG/MWM";
-          detalheRegra = codigo === "335" ? "Case pertence ao território 335." : "Título contém WEG ou MWM.";
+          regra = codigo === "335" ? "Território 335" : "Palavra-chave WEG/MWM/ELGIN";
+          detalheRegra = codigo === "335" ? "Case pertence ao território 335." : "Título contém WEG, MWM ou ELGIN.";
         } else if (codigo === "337") {
           usuario = USUARIOS["337"]; regra = "Território 337"; detalheRegra = "Case pertence ao território 337.";
         } else if (REGEX_ATENDIMENTO.test(tituloN)) {
