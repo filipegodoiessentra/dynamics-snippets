@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cronograma de Avaliações - Hub Local</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        /* Esconder input date icones nativos para design mais limpo */
+        input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; transition: 0.2s; }
+        input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+        .toast { transition: all 0.3s ease-in-out; transform: translateY(100%); opacity: 0; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        
+        /* Loading overlay */
+        #loading-overlay { display: none; }
+        #loading-overlay.active { display: flex; }
+    </style>
+</head>
+<body class="text-slate-800 h-screen flex overflow-hidden">
+
+    <aside class="w-64 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 z-20 shadow-sm">
+        <div class="h-20 flex items-center justify-center border-b border-slate-100 p-4">
+            <img src="https://www.essentracomponents.com.br/set-ap/assets/essentra-logo.png" alt="Essentra Components" class="max-h-12 w-auto object-contain">
+        </div>
+        
+        <div class="p-6 flex-1 overflow-y-auto custom-scrollbar">
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Ações Principais</p>
+            
+            <button onclick="document.getElementById('excel-upload').click()" class="w-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl transition-all shadow-sm hover:shadow text-sm font-medium mb-3 group">
+                <i class="fa-solid fa-file-excel mr-2 group-hover:scale-110 transition-transform"></i>
+                Carregar Excel
+            </button>
+            <input type="file" id="excel-upload" accept=".xlsx, .xls" class="hidden" onchange="handleExcelUpload(event)">
+
+            <button onclick="document.getElementById('json-upload').click()" class="w-full flex items-center justify-center bg-slate-50 hover:bg-slate-100 text-slate-700 px-4 py-3 rounded-xl border border-slate-200 transition-all shadow-sm text-sm font-medium mb-8 group">
+                <i class="fa-solid fa-folder-open mr-2 text-blue-500 group-hover:scale-110 transition-transform"></i>
+                Abrir Projeto
+            </button>
+            <input type="file" id="json-upload" accept=".json" class="hidden" onchange="handleJsonUpload(event)">
+
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Exportação</p>
+            
+            <button onclick="exportJSON()" class="w-full flex items-center hover:bg-slate-50 text-slate-600 px-4 py-2.5 rounded-lg transition-colors mb-1 font-medium">
+                <i class="fa-solid fa-download mr-3 text-slate-400 w-5 text-center"></i>
+                <span class="text-sm">Salvar Projeto (.json)</span>
+            </button>
+            
+            <button onclick="exportExcel()" class="w-full flex items-center hover:bg-slate-50 text-slate-600 px-4 py-2.5 rounded-lg transition-colors font-medium">
+                <i class="fa-solid fa-file-export mr-3 text-slate-400 w-5 text-center"></i>
+                <span class="text-sm">Exportar Excel</span>
+            </button>
+        </div>
+
+        <div class="p-5 bg-slate-50 border-t border-slate-100 text-xs text-slate-500 text-center">
+            <i class="fa-solid fa-shield-check text-blue-500 mb-2 text-xl"></i>
+            <p class="font-medium text-slate-700">Processamento Seguro</p>
+            <p class="mt-1 text-[11px]">Nenhum dado sai do seu PC.</p>
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50/50 relative">
+        <!-- Header Principal -->
+        <header class="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-10 shadow-sm">
+            <div class="flex flex-col">
+                <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Dashboard de Planejamento</h1>
+                <p class="text-sm text-slate-500 font-medium mt-0.5">Visão consolidada de avaliações de itens</p>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="lib-status" class="text-xs font-medium px-3 py-1.5 rounded-full bg-slate-100 text-slate-500 hidden transition-all shadow-sm">Verificando...</span>
+                <span id="last-update-badge" class="text-xs font-medium bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full hidden border border-blue-100 shadow-sm">
+                    <i class="fa-regular fa-clock mr-1"></i> Atualizado: <span id="last-update-time">-</span>
+                </span>
+            </div>
+        </header>
+
+        <!-- Área de Conteúdo Rolável -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-8" id="main-content">
+            
+            <!-- Estado Inicial (Vazio) -->
+            <div id="empty-state" class="flex flex-col items-center justify-center h-full text-slate-500">
+                <div class="bg-white p-8 rounded-full mb-6 shadow-sm border border-slate-100">
+                    <img src="https://www.essentracomponents.com.br/set-ap/assets/essentra-logo.png" alt="Essentra" class="h-12 opacity-50 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-500">
+                </div>
+                <h2 class="text-2xl font-bold text-slate-700 mb-3 tracking-tight">Nenhum dado carregado</h2>
+                <p class="text-base text-center max-w-md mb-8">Comece carregando sua planilha Excel atualizada ou abrindo um projeto salvo anteriormente (.json).</p>
+                <button onclick="document.getElementById('excel-upload').click()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 rounded-xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center group">
+                    <i class="fa-solid fa-file-excel mr-3 text-lg group-hover:scale-110 transition-transform"></i>
+                    Selecionar Arquivo Excel
+                </button>
+            </div>
+
+            <div id="dashboard-content" class="hidden">
+                <!-- Cards de Resumo -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Itens Únicos</p>
+                                <h3 class="text-4xl font-extrabold text-slate-800 tracking-tight" id="kpi-total">0</h3>
+                            </div>
+                            <div class="bg-blue-50 p-3.5 rounded-xl"><i class="fa-solid fa-cubes text-blue-600 text-xl"></i></div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Programados</p>
+                                <h3 class="text-4xl font-extrabold text-slate-800 tracking-tight" id="kpi-programmed">0</h3>
+                            </div>
+                            <div class="bg-emerald-50 p-3.5 rounded-xl"><i class="fa-regular fa-calendar-check text-emerald-600 text-xl"></i></div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Pendentes</p>
+                                <h3 class="text-4xl font-extrabold text-slate-800 tracking-tight" id="kpi-pending">0</h3>
+                            </div>
+                            <div class="bg-amber-50 p-3.5 rounded-xl"><i class="fa-regular fa-clock text-amber-600 text-xl"></i></div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">% Planejado</p>
+                                <h3 class="text-4xl font-extrabold text-slate-800 tracking-tight" id="kpi-percent">0%</h3>
+                            </div>
+                            <div class="bg-indigo-50 p-3.5 rounded-xl"><i class="fa-solid fa-chart-pie text-indigo-600 text-xl"></i></div>
+                        </div>
+                        <!-- Barra de progresso -->
+                        <div class="w-full bg-slate-100 rounded-full h-2 mt-5 overflow-hidden">
+                            <div id="kpi-progress-bar" class="bg-indigo-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                    <!-- Cronograma Visual -->
+                    <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+                        <h3 class="text-lg font-bold text-slate-800 mb-6 flex justify-between items-center">
+                            <span class="flex items-center"><i class="fa-solid fa-chart-column text-blue-500 mr-2"></i> Cronograma de Avaliações</span>
+                            <span class="text-xs font-semibold text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">Próximos 30 dias</span>
+                        </h3>
+                        <div class="relative h-64 w-full">
+                            <canvas id="timelineChart"></canvas>
+                        </div>
+                        <div id="timeline-empty" class="hidden h-64 flex flex-col items-center justify-center text-slate-400">
+                            <i class="fa-regular fa-calendar-xmark text-4xl mb-3 text-slate-300"></i>
+                            <p class="text-sm font-medium">Nenhuma data programada ainda.</p>
+                        </div>
+                    </div>
+
+                    <!-- Resumo por Grupo -->
+                    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col">
+                        <h3 class="text-lg font-bold text-slate-800 mb-6 flex items-center">
+                            <i class="fa-solid fa-building text-blue-500 mr-2"></i> Resumo por Grupo
+                        </h3>
+                        <div class="flex-1 overflow-y-auto custom-scrollbar pr-2" id="group-summary-list">
+                            <!-- Gerado dinamicamente -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col overflow-hidden">
+                    <div class="p-6 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50/50">
+                        <h3 class="text-lg font-bold text-slate-800 flex items-center">
+                            <i class="fa-solid fa-list-check text-blue-500 mr-2"></i>
+                            Gestão de Itens
+                        </h3>
+                        
+                        <!-- Controles e Filtros -->
+                        <div class="flex flex-wrap items-center gap-3">
+                            <div class="relative">
+                                <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm"></i>
+                                <input type="text" id="search-input" placeholder="Pesquisar item..." class="pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full md:w-64 shadow-sm font-medium text-slate-700" oninput="filterTable()">
+                            </div>
+                            
+                            <select id="filter-group" class="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm font-medium text-slate-700" onchange="filterTable()">
+                                <option value="all">Todos os Grupos</option>
+                                <!-- Gerado dinamicamente -->
+                            </select>
+                            
+                            <select id="filter-status" class="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm font-medium text-slate-700" onchange="filterTable()">
+                                <option value="all">Todos os Status</option>
+                                <option value="programmed">🟢 Programados</option>
+                                <option value="pending">🟠 Pendentes</option>
+                                <option value="late">🔴 Atrasados</option>
+                            </select>
+
+                            <select id="filter-type" class="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm font-medium text-slate-700" onchange="filterTable()">
+                                <option value="all">Todos os Tipos</option>
+                                <option value="repeated">🔗 Repetidos (>1 cliente)</option>
+                                <option value="unique">📄 Únicos (1 cliente)</option>
+                            </select>
+
+                            <select id="filter-date" class="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm font-medium text-slate-700" onchange="filterTable()">
+                                <option value="all">Todas as Datas (Meses)</option>
+                                <!-- Gerado dinamicamente -->
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto w-full">
+                        <table class="w-full text-left border-collapse min-w-[800px]">
+                            <thead>
+                                <tr class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
+                                    <th class="px-6 py-4 font-semibold w-1/4">Item</th>
+                                    <th class="px-6 py-4 font-semibold w-1/4">Data da Avaliação</th>
+                                    <th class="px-6 py-4 font-semibold w-1/3">Clientes / Grupos Afetados</th>
+                                    <th class="px-6 py-4 font-semibold w-1/6 text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="items-table-body" class="divide-y divide-slate-100 text-sm text-slate-700">
+                                <!-- Linhas geradas dinamicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="p-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                        <span id="table-info">Mostrando 0 de 0 itens</span>
+                        <!-- Paginação simples poderia ir aqui, mas listaremos tudo com scroll nativo veloz -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="h-12"></div>
+        </div>
+    </main>
+
+    <!-- Overlay de Loading -->
+    <div id="loading-overlay" class="fixed inset-0 bg-slate-900 bg-opacity-50 z-50 items-center justify-center backdrop-blur-sm transition-opacity duration-300">
+        <div class="bg-white p-8 rounded-xl shadow-2xl flex flex-col items-center max-w-sm w-full mx-4">
+            <div class="w-16 h-16 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+            <h3 class="text-lg font-semibold text-slate-800" id="loading-title">Processando Planilha</h3>
+            <p class="text-sm text-slate-500 mt-2 text-center" id="loading-desc">Buscando abas, itens e consolidando informações. Isso pode levar alguns segundos...</p>
+        </div>
+    </div>
+
+    <!-- Modal de Diagnóstico de Importação -->
+    <div id="diagnostic-modal" class="fixed inset-0 bg-slate-900 bg-opacity-50 z-50 hidden items-center justify-center backdrop-blur-sm transition-opacity duration-300">
+        <div class="bg-white p-6 rounded-xl shadow-2xl flex flex-col max-w-lg w-full mx-4 max-h-[85vh]">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3 mb-4">
+                <h3 class="text-lg font-semibold text-slate-800"><i class="fa-solid fa-clipboard-check text-emerald-500 mr-2"></i> Diagnóstico da Leitura</h3>
+                <button onclick="document.getElementById('diagnostic-modal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 transition-colors">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 text-sm text-slate-600 space-y-2" id="diagnostic-content">
+                <!-- Gerado dinamicamente -->
+            </div>
+            <div class="mt-6 pt-4 border-t border-slate-100 flex justify-end">
+                <button onclick="document.getElementById('diagnostic-modal').classList.add('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-sm">
+                    Continuar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sistema de Toast / Notificações -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-3"></div>
+
+    <script>
+        // ==========================================
+        // ESTRUTURAS DE DADOS GLOBAIS
+        // ==========================================
+        let globalItems = {}; // { 'NOME_ITEM': { name, clients: [{sheet, cname, group, cnpj}], date, obs } }
+        let globalGroups = new Set();
+        let chartInstance = null;
+        
+        let appState = {
+            versao: 1,
+            ultimaAtualizacao: new Date().toISOString(),
+            avaliacoes: {} // { 'NOME_ITEM': { data: 'YYYY-MM-DD' } }
+        };
+
+        // ==========================================
+        // FUNÇÕES UTILITÁRIAS
+        // ==========================================
+        function showLoading(title, desc) {
+            document.getElementById('loading-title').innerText = title;
+            document.getElementById('loading-desc').innerText = desc;
+            document.getElementById('loading-overlay').classList.add('active');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading-overlay').classList.remove('active');
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const colors = {
+                success: 'bg-emerald-500',
+                error: 'bg-red-500',
+                warning: 'bg-amber-500',
+                info: 'bg-blue-500'
+            };
+            
+            const icons = {
+                success: 'fa-check-circle',
+                error: 'fa-circle-xmark',
+                warning: 'fa-triangle-exclamation',
+                info: 'fa-circle-info'
+            };
+
+            toast.className = `toast flex items-center text-white px-4 py-3 rounded-lg shadow-lg ${colors[type]}`;
+            toast.innerHTML = `
+                <i class="fa-solid ${icons[type]} mr-3 text-lg"></i>
+                <span class="font-medium text-sm">${message}</span>
+            `;
+            
+            container.appendChild(toast);
+            
+            // Animate in
+            setTimeout(() => toast.classList.add('show'), 10);
+            
+            // Remove after 3.5s
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        function normalizeString(str) {
+            if (!str) return '';
+            return str.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+        }
+
+        function getTodayString() {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        function formatDateBr(dateString) {
+            if (!dateString) return '';
+            const [y, m, d] = dateString.split('-');
+            return `${d}/${m}/${y}`;
+        }
+
+        function formatStatus(dateStr) {
+            if (!dateStr) return { text: 'Pendente', class: 'bg-amber-100 text-amber-700', icon: 'fa-regular fa-clock', code: 'pending' };
+            
+            const today = getTodayString();
+            if (dateStr < today) {
+                return { text: 'Atrasado', class: 'bg-red-100 text-red-700', icon: 'fa-solid fa-circle-exclamation', code: 'late' };
+            } else if (dateStr === today) {
+                return { text: 'Hoje', class: 'bg-blue-100 text-blue-700', icon: 'fa-solid fa-bolt', code: 'programmed' };
+            } else {
+                return { text: 'Agendado', class: 'bg-emerald-100 text-emerald-700', icon: 'fa-regular fa-calendar-check', code: 'programmed' };
+            }
+        }
+
+        // Validação da biblioteca no carregamento da página
+        window.addEventListener('DOMContentLoaded', () => {
+            const libStatus = document.getElementById('lib-status');
+            if (libStatus) {
+                libStatus.classList.remove('hidden');
+                if (typeof XLSX === 'undefined') {
+                    libStatus.className = 'text-xs font-medium px-3 py-1.5 rounded-full bg-red-100 text-red-700 border border-red-200';
+                    libStatus.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Biblioteca SheetJS (Excel) Bloqueada';
+                } else {
+                    libStatus.className = 'text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100';
+                    libStatus.innerHTML = '<i class="fa-solid fa-file-excel mr-1.5"></i> Motor Excel Pronto';
+                }
+            }
+        });
+
+        async function handleExcelUpload(event) {
+            if (typeof XLSX === 'undefined') {
+                showToast('Erro crítico: A biblioteca de leitura do Excel (SheetJS) não carregou. Verifique se o acesso à internet ou o bloqueio de rede da empresa está impedindo o uso.', 'error');
+                event.target.value = '';
+                return;
+            }
+
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showLoading('Lendo Excel', 'Extraindo abas e mapeando clientes. Isso ocorre totalmente na sua máquina.');
+            
+            try {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, {type: 'array'});
+                        processExcelData(workbook);
+                    } catch (error) {
+                        console.error(error);
+                        hideLoading();
+                        showToast('Erro ao ler a planilha. Formato inválido.', 'error');
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } catch (err) {
+                hideLoading();
+                showToast('Erro no processamento do arquivo.', 'error');
+            }
+            
+            // Reseta o input para permitir carregar o mesmo arquivo caso queira recarregar
+            event.target.value = '';
+        }
+
+        function processExcelData(workbook) {
+            globalItems = {};
+            globalGroups = new Set();
+            let clientsMap = []; // base de clientes
+            let importStats = {}; // Armazena diagnóstico de cada aba
+
+            // 1. Procurar Aba de Clientes (tenta achar "clientes" ou usa a primeira que pareça base)
+            let clientsSheetName = workbook.SheetNames.find(s => normalizeString(s).includes('CLIENTE'));
+            
+            if (clientsSheetName) {
+                const sheet = workbook.Sheets[clientsSheetName];
+                // Converte para json pulando possiveis linhas em branco. Assume CNAME, GRUPO, CNPJ no cabeçalho
+                const rawClients = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+                
+                // Mapear encontrando chaves que contenham as palavras
+                rawClients.forEach(row => {
+                    let cname = '', grupo = '', cnpj = '';
+                    for (let key in row) {
+                        const nKey = normalizeString(key);
+                        if (nKey.includes('CNAME') || nKey === 'CLIENTE') cname = String(row[key] || '');
+                        else if (nKey.includes('GRUPO')) grupo = String(row[key] || '');
+                        else if (nKey.includes('CNPJ')) cnpj = String(row[key] || '');
+                    }
+                    if (cname || grupo || cnpj) {
+                        clientsMap.push({ cname, grupo, cnpj });
+                    }
+                });
+                importStats['Base de Clientes'] = `Mapeados ${clientsMap.length} registros`;
+            } else {
+                importStats['Base de Clientes'] = `Aba central de clientes não encontrada.`;
+            }
+
+            workbook.SheetNames.forEach(sheetName => {
+                if (sheetName === clientsSheetName) return;
+                
+                const sheet = workbook.Sheets[sheetName];
+                const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }); // array of arrays
+                
+                if (rawData.length === 0) {
+                    importStats[sheetName] = "Aba vazia ignorada";
+                    return;
+                }
+
+                // Tentar descobrir o Grupo associado, ignorando prefixos comuns para melhor flexibilidade
+                const normSheet = normalizeString(sheetName).replace(/^(ITEM|ITENS)\s+/g, '').replace(/^GRUPO\s+/g, '').trim();
+                let matchedGroup = sheetName; // fallback é o nome da aba
+                let cname = '', cnpj = '';
+                
+                const match = clientsMap.find(c => {
+                    const normG = normalizeString(c.grupo);
+                    const normC = normalizeString(c.cname);
+                    // Match fuzzy flexível
+                    return (normG && (normSheet.includes(normG) || normG.includes(normSheet))) || 
+                           (normC && (normSheet.includes(normC) || normC.includes(normSheet)));
+                });
+                
+                if (match && match.grupo) {
+                    matchedGroup = match.grupo;
+                    cname = match.cname;
+                    cnpj = match.cnpj;
+                }
+
+                globalGroups.add(matchedGroup);
+
+                // Procurar a coluna ITEM varrendo generosamente até 250 linhas
+                let itemColIdx = -1;
+                let headerRowIdx = -1;
+                
+                // Lista de palavras-chave bem abrangente (já normalizada/sem acento)
+                const keywords = ['ITEM', 'ITENS', 'PART NUMBER', 'PART-NUMBER', 'PN', 'P/N', 'CODIGO', 'COD', 'MATERIAL', 'PRODUTO', 'PECA', 'COMPONENTE', 'REFERENCIA', 'REF', 'DESENHO', 'NUMERO'];
+                
+                // 1. Busca por cabeçalhos conhecidos nas primeiras 250 linhas, focando nas colunas de A até F (0 a 5)
+                for (let r = 0; r < Math.min(rawData.length, 250); r++) {
+                    const row = rawData[r];
+                    if (!row) continue;
+                    
+                    for (let c = 0; c <= 5; c++) {
+                        if (c >= row.length) break;
+                        const cellVal = normalizeString(row[c]);
+                        
+                        if (!cellVal) continue;
+                        
+                        // Verifica match exato ou começa com a palavra (ex: "CODIGO DO CLIENTE")
+                        const isMatch = keywords.some(kw => {
+                            if (kw.length <= 3) { // Para siglas como PN e COD, exige limite para não pegar palavras inteiras que comecem com isso
+                                return cellVal === kw || cellVal.startsWith(kw + ' ') || cellVal.startsWith(kw + ':') || cellVal.startsWith(kw + '.');
+                            }
+                            return cellVal === kw || cellVal.startsWith(kw + ' ');
+                        });
+
+                        if (isMatch) {
+                            itemColIdx = c;
+                            headerRowIdx = r;
+                            break;
+                        }
+                    }
+                    if (itemColIdx !== -1) break;
+                }
+
+                // 2. SUPER FALLBACK (Análise Heurística): Se não achou um cabeçalho óbvio,
+                // avalia todas as colunas de A até E simultaneamente para descobrir qual é
+                // a mais provável de conter Códigos (Part Numbers) ao invés de Descrições.
+                if (itemColIdx === -1) {
+                    let colStats = [
+                        { idx: 0, count: 0, lenSum: 0, spaceSum: 0 }, // A
+                        { idx: 1, count: 0, lenSum: 0, spaceSum: 0 }, // B
+                        { idx: 2, count: 0, lenSum: 0, spaceSum: 0 }, // C
+                        { idx: 3, count: 0, lenSum: 0, spaceSum: 0 }, // D
+                        { idx: 4, count: 0, lenSum: 0, spaceSum: 0 }  // E
+                    ];
+                    
+                    for (let r = 0; r < rawData.length; r++) {
+                        if (!rawData[r]) continue;
+                        for (let c = 0; c <= 4; c++) {
+                            const val = String(rawData[r][c] || '').trim();
+                            if (val !== '') {
+                                colStats[c].count++;
+                                colStats[c].lenSum += val.length;
+                                // Contar espaços ajuda a penalizar colunas de "Descrição do Produto"
+                                colStats[c].spaceSum += (val.match(/ /g) || []).length;
+                            }
+                        }
+                    }
+                    
+                    let bestCol = -1;
+                    let bestScore = -9999;
+                    
+                    colStats.forEach(stat => {
+                        if (stat.count > 3) { // Precisa ter no mínimo alguns itens para não eleger colunas de ruído
+                            const avgLen = stat.lenSum / stat.count;
+                            const avgSpaces = stat.spaceSum / stat.count;
+                            
+                            let score = stat.count; // Pontuação base: volume de dados presentes na coluna
+                            
+                            // Penalidades fortíssimas para colunas de Descrição (textos longos e com muitos espaços)
+                            if (avgSpaces > 1.5) score -= (avgSpaces * stat.count * 2);
+                            if (avgLen > 25) score -= (stat.count * 2);
+                            
+                            // Bônus para B (1) e C (2) que são os locais mais prováveis segundo seu relato
+                            if (stat.idx === 1 || stat.idx === 2) score += (stat.count * 0.5);
+
+                            if (score > bestScore) {
+                                bestScore = score;
+                                bestCol = stat.idx;
+                            }
+                        }
+                    });
+                    
+                    if (bestCol !== -1) {
+                        itemColIdx = bestCol;
+                        headerRowIdx = -1; // Sem linha de cabeçalho definida
+                    }
+                }
+
+                if (itemColIdx === -1) {
+                    importStats[sheetName] = "Coluna de itens não identificada na varredura";
+                    return; // Ignora a aba com falha
+                }
+
+                let itemsFoundCount = 0;
+                
+                // Extrair os itens (da linha posterior ao cabeçalho, ou do inicio se fallback)
+                const startRow = Math.max(0, headerRowIdx + 1);
+                for (let r = startRow; r < rawData.length; r++) {
+                    if (!rawData[r]) continue;
+
+                    const itemName = String(rawData[r][itemColIdx] || '').trim();
+                    
+                    // Pular vazios
+                    if (!itemName || itemName === '') continue;
+                    
+                    const normName = normalizeString(itemName);
+                    
+                    // Prevenção extra: se caiu no fallback, ignorar linhas curtas demais ou palavras que são claramente cabeçalhos
+                    if (headerRowIdx === -1 && normName.length < 2) continue;
+                    const isHeaderKeyword = keywords.some(kw => normName === kw || normName.startsWith('ITEM '));
+                    if (isHeaderKeyword) continue;
+
+                    const itemKey = normName;
+                    
+                    // Consolidação: Se o item já existe, adicionamos apenas este novo cliente à lista afetada
+                    if (!globalItems[itemKey]) {
+                        globalItems[itemKey] = {
+                            name: itemName,
+                            clients: [],
+                            date: '' // Inicia sem data
+                        };
+                    }
+                    
+                    // Verifica se este cliente/grupo já não está mapeado para este item na mesma aba
+                    const exists = globalItems[itemKey].clients.some(c => c.sheet === sheetName && c.group === matchedGroup);
+                    if (!exists) {
+                        globalItems[itemKey].clients.push({
+                            sheet: sheetName,
+                            group: matchedGroup,
+                            cname: cname,
+                            cnpj: cnpj
+                        });
+                        itemsFoundCount++;
+                    }
+                }
+                
+                importStats[sheetName] = `${itemsFoundCount} itens carregados`;
+            });
+
+            const totalConsolidado = Object.keys(globalItems).length;
+            hideLoading();
+            
+            // Exibir Modal de Diagnóstico
+            showImportSummary(importStats, totalConsolidado);
+
+            if (totalConsolidado === 0) {
+                showToast('Atenção: A leitura finalizou, mas não encontrou itens válidos nas colunas.', 'error');
+                return;
+            }
+
+            // Mesclar com o estado anterior salvo (se existir)
+            mergeStateWithItems();
+            
+            // Atualizar UI
+            showToast(`Pronto! ${totalConsolidado} itens únicos mapeados com sucesso.`);
+            initializeDashboard();
+        }
+
+        function showImportSummary(stats, total) {
+            const modal = document.getElementById('diagnostic-modal');
+            const content = document.getElementById('diagnostic-content');
+            
+            let html = `
+                <div class="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200 text-center shadow-sm">
+                    <span class="block text-4xl font-bold ${total > 0 ? 'text-blue-600' : 'text-amber-500'} mb-1">${total}</span>
+                    <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Itens Únicos Consolidados</span>
+                </div>
+                <h4 class="text-[11px] font-bold text-slate-400 uppercase mb-3 mt-4 tracking-wider border-b border-slate-100 pb-1">Análise por Aba do Excel</h4>
+                <ul class="space-y-2">
+            `;
+            
+            for (const [sheet, result] of Object.entries(stats)) {
+                const isZero = result.includes('0 itens') || result.includes('vazia') || result.includes('não identificada');
+                const isClient = sheet.includes('Base de Clientes');
+                
+                let iconClass = 'fa-check text-emerald-500';
+                let bgClass = 'bg-white border-slate-200';
+                
+                if (isClient) {
+                    iconClass = 'fa-address-book text-blue-500';
+                    bgClass = 'bg-blue-50 border-blue-200';
+                } else if (isZero) {
+                    iconClass = 'fa-triangle-exclamation text-amber-500';
+                    bgClass = 'bg-amber-50 border-amber-200';
+                }
+                
+                html += `
+                    <li class="flex justify-between items-center p-2.5 rounded-lg border ${bgClass} shadow-sm">
+                        <span class="font-medium text-slate-700 flex items-center truncate mr-2" title="${sheet}">
+                            <i class="fa-solid ${iconClass} w-5 mr-1.5 text-center"></i> 
+                            <span class="truncate max-w-[200px] text-[13px]">${sheet}</span>
+                        </span>
+                        <span class="text-slate-500 text-[11px] font-medium whitespace-nowrap bg-white px-2 py-1 rounded shadow-sm border border-slate-100">${result}</span>
+                    </li>
+                `;
+            }
+            html += '</ul>';
+            
+            content.innerHTML = html;
+            modal.classList.remove('hidden');
+        }
+
+        function mergeStateWithItems() {
+            Object.keys(globalItems).forEach(key => {
+                if (appState.avaliacoes && appState.avaliacoes[key] && appState.avaliacoes[key].data) {
+                    globalItems[key].date = appState.avaliacoes[key].data;
+                }
+            });
+        }
+
+        function handleDateChange(itemKey, newDate) {
+            if (!globalItems[itemKey]) return;
+            
+            globalItems[itemKey].date = newDate;
+            
+            // Salvar no estado global
+            if (!appState.avaliacoes) appState.avaliacoes = {};
+            if (!appState.avaliacoes[itemKey]) appState.avaliacoes[itemKey] = {};
+            
+            appState.avaliacoes[itemKey].data = newDate;
+            appState.ultimaAtualizacao = new Date().toISOString();
+            
+            // Atualiza hora na UI
+            document.getElementById('last-update-time').innerText = new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+            document.getElementById('last-update-badge').classList.remove('hidden');
+
+            // Atualiza as opções do filtro de datas caso um novo mês tenha sido adicionado
+            populateFilters();
+
+            // Atualiza Dashboard em tempo real
+            updateDashboardWidgets();
+            
+            // Atualiza o status visual na linha específica da tabela
+            const statusCell = document.getElementById(`status-${itemKey}`);
+            if (statusCell) {
+                const status = formatStatus(newDate);
+                statusCell.innerHTML = `
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${status.class}">
+                        <i class="${status.icon} mr-1.5"></i> ${status.text}
+                    </span>
+                `;
+            }
+        }
+
+        function handleJsonUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (parsed && parsed.avaliacoes) {
+                        appState = parsed;
+                        if (Object.keys(globalItems).length > 0) {
+                            mergeStateWithItems();
+                            initializeDashboard();
+                        }
+                        showToast('Projeto aberto. As datas foram restauradas.');
+                    } else {
+                        showToast('Arquivo JSON inválido.', 'error');
+                    }
+                } catch (err) {
+                    showToast('Erro ao ler o arquivo JSON.', 'error');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        function exportJSON() {
+            if (Object.keys(appState.avaliacoes).length === 0 && Object.keys(globalItems).length === 0) {
+                showToast('Não há dados para salvar.', 'warning');
+                return;
+            }
+
+            // Garante que o estado mais atual de globalItems esteja no appState antes de salvar
+            Object.keys(globalItems).forEach(key => {
+                if (globalItems[key].date) {
+                    if (!appState.avaliacoes[key]) appState.avaliacoes[key] = {};
+                    appState.avaliacoes[key].data = globalItems[key].date;
+                }
+            });
+
+            appState.ultimaAtualizacao = new Date().toISOString();
+            
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "planejamento_avaliacoes.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+            showToast('Projeto salvo com sucesso!');
+        }
+
+        function initializeDashboard() {
+            document.getElementById('empty-state').classList.add('hidden');
+            document.getElementById('dashboard-content').classList.remove('hidden');
+            
+            populateFilters();
+            updateDashboardWidgets();
+            filterTable(); // Changed from renderTable() to filterTable()
+        }
+
+        function updateDashboardWidgets() {
+            const keys = Object.keys(globalItems);
+            const total = keys.length;
+            let programmed = 0;
+            
+            // Map datas para o cronograma
+            let dateCounts = {}; // { '2026-10-15': { count: 2, groups: Set } }
+            let groupCounts = {}; // { 'BOSCH': { total: 10, prog: 5 } }
+            
+            // Inicia groupCounts com todos os grupos conhecidos
+            globalGroups.forEach(g => groupCounts[g] = { total: 0, prog: 0 });
+
+            keys.forEach(key => {
+                const item = globalItems[key];
+                const hasDate = !!item.date;
+                
+                if (hasDate) {
+                    programmed++;
+                    if (!dateCounts[item.date]) dateCounts[item.date] = { count: 0, groups: new Set() };
+                    dateCounts[item.date].count++;
+                }
+
+                // Conta por grupo
+                let itemGroups = new Set(item.clients.map(c => c.group));
+                itemGroups.forEach(g => {
+                    if (!groupCounts[g]) groupCounts[g] = { total: 0, prog: 0 };
+                    groupCounts[g].total++;
+                    if (hasDate) groupCounts[g].prog++;
+                    if (hasDate) dateCounts[item.date].groups.add(g);
+                });
+            });
+
+            const pending = total - programmed;
+            const percent = total > 0 ? Math.round((programmed / total) * 100) : 0;
+
+            // Atualiza Texto KPIs
+            document.getElementById('kpi-total').innerText = total;
+            document.getElementById('kpi-programmed').innerText = programmed;
+            document.getElementById('kpi-pending').innerText = pending;
+            document.getElementById('kpi-percent').innerText = `${percent}%`;
+            document.getElementById('kpi-progress-bar').style.width = `${percent}%`;
+
+            // Atualiza Resumo por Grupo
+            renderGroupSummary(groupCounts);
+            
+            // Atualiza Gráfico
+            renderTimelineChart(dateCounts);
+        }
+
+        function renderGroupSummary(groupCounts) {
+            const list = document.getElementById('group-summary-list');
+            list.innerHTML = '';
+            
+            const sortedGroups = Object.keys(groupCounts).sort((a,b) => groupCounts[b].total - groupCounts[a].total);
+            
+            if (sortedGroups.length === 0) {
+                list.innerHTML = '<p class="text-sm text-slate-400 text-center py-4">Nenhum grupo detectado.</p>';
+                return;
+            }
+
+            sortedGroups.forEach(g => {
+                const data = groupCounts[g];
+                if (data.total === 0) return;
+                
+                const percent = Math.round((data.prog / data.total) * 100);
+                
+                const div = document.createElement('div');
+                div.className = 'mb-4 last:mb-0';
+                div.innerHTML = `
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="font-medium text-slate-700 truncate" title="${g}">${g}</span>
+                        <span class="text-slate-500">${data.prog}/${data.total}</span>
+                    </div>
+                    <div class="w-full bg-slate-100 rounded-full h-1.5">
+                        <div class="bg-blue-500 h-1.5 rounded-full" style="width: ${percent}%"></div>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function renderTimelineChart(dateCounts) {
+            const ctx = document.getElementById('timelineChart');
+            const emptyState = document.getElementById('timeline-empty');
+            
+            // Filtra apenas datas futuras e ordena
+            const today = getTodayString();
+            const futureDates = Object.keys(dateCounts)
+                .filter(d => d >= today)
+                .sort();
+
+            if (futureDates.length === 0) {
+                ctx.style.display = 'none';
+                emptyState.classList.remove('hidden');
+                if (chartInstance) chartInstance.destroy();
+                return;
+            }
+
+            ctx.style.display = 'block';
+            emptyState.classList.add('hidden');
+
+            const labels = futureDates.map(d => formatDateBr(d).substring(0,5)); // Só dia/mes
+            const dataCounts = futureDates.map(d => dateCounts[d].count);
+            
+            // Montar tooltip customizado com nomes dos grupos
+            const tooltips = futureDates.map(d => Array.from(dateCounts[d].groups).join(', '));
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Itens Avaliados',
+                        data: dataCounts,
+                        backgroundColor: '#3b82f6', // blue-500
+                        borderRadius: 4,
+                        barPercentage: 0.6,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                afterBody: function(context) {
+                                    const index = context[0].dataIndex;
+                                    const groups = tooltips[index];
+                                    return groups ? `Grupos: ${groups}` : '';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 1, color: '#94a3b8' },
+                            grid: { color: '#f1f5f9' },
+                            border: { display: false }
+                        },
+                        x: {
+                            ticks: { color: '#64748b', font: {size: 11} },
+                            grid: { display: false },
+                            border: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function populateFilters() {
+            const groupSelect = document.getElementById('filter-group');
+            const currentGroup = groupSelect.value;
+            
+            // Mantém a primeira opção
+            groupSelect.innerHTML = '<option value="all">Todos os Grupos</option>';
+            
+            Array.from(globalGroups).sort().forEach(g => {
+                const opt = document.createElement('option');
+                opt.value = normalizeString(g);
+                opt.textContent = g;
+                groupSelect.appendChild(opt);
+            });
+            
+            if (currentGroup) groupSelect.value = currentGroup;
+
+            // Popular filtro dinâmico de Datas (Meses Únicos)
+            const dateSelect = document.getElementById('filter-date');
+            if (dateSelect) {
+                const currentDate = dateSelect.value;
+                dateSelect.innerHTML = '<option value="all">Todas as Datas (Meses)</option>';
+                
+                const months = new Set();
+                Object.values(globalItems).forEach(item => {
+                    if (item.date) {
+                        months.add(item.date.substring(0, 7)); // Extrai apenas YYYY-MM
+                    }
+                });
+                
+                Array.from(months).sort().forEach(monthStr => {
+                    const [yyyy, mm] = monthStr.split('-');
+                    const opt = document.createElement('option');
+                    opt.value = monthStr;
+                    opt.textContent = `${mm}/${yyyy}`; // Exibe MM/YYYY
+                    dateSelect.appendChild(opt);
+                });
+                
+                // Mantém o valor selecionado se o dropdown for recarregado
+                if (currentDate && Array.from(dateSelect.options).some(o => o.value === currentDate)) {
+                    dateSelect.value = currentDate;
+                }
+            }
+        }
+
+        function filterTable() {
+            const tbody = document.getElementById('items-table-body');
+            tbody.innerHTML = '';
+            
+            const searchTerm = normalizeString(document.getElementById('search-input').value);
+            const groupFilter = document.getElementById('filter-group').value;
+            const statusFilter = document.getElementById('filter-status').value;
+            const typeFilter = document.getElementById('filter-type').value;
+            const dateFilter = document.getElementById('filter-date') ? document.getElementById('filter-date').value : 'all';
+            
+            let count = 0;
+            const keys = Object.keys(globalItems).sort();
+
+            keys.forEach(key => {
+                const item = globalItems[key];
+                const statusInfo = formatStatus(item.date);
+                
+                // Aplicar filtros
+                if (searchTerm && !normalizeString(item.name).includes(searchTerm)) return;
+                if (statusFilter !== 'all' && statusInfo.code !== statusFilter) return;
+                
+                if (typeFilter === 'repeated' && item.clients.length <= 1) return;
+                if (typeFilter === 'unique' && item.clients.length > 1) return;
+                
+                if (dateFilter !== 'all') {
+                    // Verifica se a data do item começa com o "YYYY-MM" selecionado no filtro
+                    if (!item.date || !item.date.startsWith(dateFilter)) return;
+                }
+                
+                const itemGroups = item.clients.map(c => c.group);
+                if (groupFilter !== 'all') {
+                    const normItemGroups = itemGroups.map(normalizeString);
+                    if (!normItemGroups.includes(groupFilter)) return;
+                }
+
+                count++;
+
+                // Agrupar visualização de clientes
+                // Ex: "Bosch • Mahle • Flexitech"
+                const uniqueGroups = [...new Set(itemGroups)];
+                let clientsHtml = uniqueGroups.slice(0, 3).map(g => `<span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-medium">${g}</span>`).join(' ');
+                
+                if (uniqueGroups.length > 3) {
+                    clientsHtml += ` <span class="text-xs text-slate-400" title="${uniqueGroups.slice(3).join(', ')}">+${uniqueGroups.length - 3} mais</span>`;
+                }
+
+                // Identificador para sincronismo real time
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition-colors group';
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap font-medium text-slate-800">
+                        ${item.name}
+                        ${item.clients.length > 1 ? `<i class="fa-solid fa-link text-blue-400 ml-2 text-xs" title="Item em múltiplos clientes"></i>` : ''}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="relative flex items-center">
+                            <input type="date" value="${item.date || ''}" 
+                                   onchange="handleDateChange('${key}', this.value)"
+                                   class="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white hover:border-blue-400 transition-colors cursor-pointer w-40 text-slate-700 shadow-sm font-medium">
+                        </div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex flex-wrap gap-1 items-center">
+                            ${clientsHtml}
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-center" id="status-${key}">
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusInfo.class}">
+                            <i class="${statusInfo.icon} mr-1.5"></i> ${statusInfo.text}
+                        </span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('table-info').innerText = `Mostrando ${count} itens filtrados`;
+        }
+
+        function exportExcel() {
+            if (Object.keys(globalItems).length === 0) {
+                showToast('Não há dados para exportar.', 'error');
+                return;
+            }
+
+            showLoading('Gerando Excel', 'Construindo abas formatadas...');
+
+            try {
+                // Prepara as estruturas de dados para as abas
+                const wsDashboardData = [];
+                const wsScheduleData = [];
+                const wsItemData = [];
+                const wsDetailedData = [];
+
+                let programmed = 0;
+                let total = Object.keys(globalItems).length;
+
+                // Headers
+                wsScheduleData.push(["Data", "Qtd. Itens", "Grupos Envolvidos"]);
+                wsItemData.push(["Item", "Data da Avaliação", "Status", "Qtd. Clientes", "Grupos Afetados"]);
+                wsDetailedData.push(["Item", "Data Avaliação", "Status", "Grupo", "Cliente (CNAME)", "CNPJ", "Aba de Origem"]);
+
+                // Dados
+                const dateMap = {};
+
+                Object.values(globalItems).forEach(item => {
+                    if (item.date) programmed++;
+                    
+                    const statusInfo = formatStatus(item.date).text;
+                    const groups = [...new Set(item.clients.map(c => c.group))];
+
+                    // Popular Aba "Por Item"
+                    wsItemData.push([
+                        item.name,
+                        formatDateBr(item.date),
+                        statusInfo,
+                        item.clients.length,
+                        groups.join(' / ')
+                    ]);
+
+                    // Popular Aba "Detalhado" (1 linha por ocorrência no cliente)
+                    item.clients.forEach(c => {
+                        wsDetailedData.push([
+                            item.name,
+                            formatDateBr(item.date),
+                            statusInfo,
+                            c.group,
+                            c.cname || '-',
+                            c.cnpj || '-',
+                            c.sheet
+                        ]);
+                    });
+
+                    // Construir Mapa de Datas para Cronograma
+                    if (item.date) {
+                        if (!dateMap[item.date]) dateMap[item.date] = { count: 0, groups: new Set() };
+                        dateMap[item.date].count++;
+                        groups.forEach(g => dateMap[item.date].groups.add(g));
+                    }
+                });
+
+                // Dashboard
+                wsDashboardData.push(["DASHBOARD DE AVALIAÇÕES", ""]);
+                wsDashboardData.push(["Gerado em:", formatDateBr(getTodayString())]);
+                wsDashboardData.push(["", ""]);
+                wsDashboardData.push(["Itens Únicos", total]);
+                wsDashboardData.push(["Programados", programmed]);
+                wsDashboardData.push(["Pendentes", total - programmed]);
+                wsDashboardData.push(["% Concluído", `${total > 0 ? Math.round((programmed/total)*100) : 0}%`]);
+
+                // Completar Schedule
+                Object.keys(dateMap).sort().forEach(date => {
+                    wsScheduleData.push([
+                        formatDateBr(date),
+                        dateMap[date].count,
+                        Array.from(dateMap[date].groups).join(', ')
+                    ]);
+                });
+
+                // Criar planilhas usando utilitário para converter Arrays em Sheets
+                const wb = XLSX.utils.book_new();
+                
+                const wsDash = XLSX.utils.aoa_to_sheet(wsDashboardData);
+                const wsSched = XLSX.utils.aoa_to_sheet(wsScheduleData);
+                const wsItems = XLSX.utils.aoa_to_sheet(wsItemData);
+                const wsDetail = XLSX.utils.aoa_to_sheet(wsDetailedData);
+
+                // Auto-sizing colunas basico
+                wsItems['!cols'] = [{wch: 25}, {wch: 18}, {wch: 15}, {wch: 12}, {wch: 40}];
+                wsDetail['!cols'] = [{wch: 20}, {wch: 15}, {wch: 15}, {wch: 20}, {wch: 30}, {wch: 20}, {wch: 20}];
+                wsSched['!cols'] = [{wch: 15}, {wch: 12}, {wch: 40}];
+                wsDash['!cols'] = [{wch: 25}, {wch: 15}];
+
+                XLSX.utils.book_append_sheet(wb, wsDash, "Dashboard");
+                XLSX.utils.book_append_sheet(wb, wsSched, "Cronograma");
+                XLSX.utils.book_append_sheet(wb, wsItems, "Por Item");
+                XLSX.utils.book_append_sheet(wb, wsDetail, "Detalhado");
+
+                XLSX.writeFile(wb, `planejamento_avaliacoes_${getTodayString()}.xlsx`);
+                
+                hideLoading();
+                showToast('Planilha Excel exportada com sucesso!');
+
+            } catch (err) {
+                console.error(err);
+                hideLoading();
+                showToast('Ocorreu um erro ao exportar o arquivo.', 'error');
+            }
+        }
+    </script>
+</body>
+</html>
