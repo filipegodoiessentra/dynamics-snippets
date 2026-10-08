@@ -1,0 +1,305 @@
+(async function () {
+
+    try {
+
+        console.clear();
+
+        console.log("==========================================");
+        console.log("📊 HISTÓRICO DE ROTEAMENTO - ESSENTRA");
+        console.log("📅 08/10/2026 - A PARTIR DAS 15:00");
+        console.log("==========================================");
+
+        // =========================================================
+        // 1. LER HISTÓRICO SALVO PELA V6.0
+        // =========================================================
+
+        const historico = JSON.parse(
+            localStorage.getItem("lead_log") || "[]"
+        );
+
+        if (!historico.length) {
+
+            alert(
+                "❌ Nenhum histórico encontrado.\n\n" +
+                "Não existem registros em lead_log neste navegador."
+            );
+
+            return;
+        }
+
+
+        // =========================================================
+        // 2. PERÍODO FIXO
+        //    08/10/2026 A PARTIR DAS 15:00
+        // =========================================================
+
+        const inicio = new Date(
+            2026,
+            9,     // Outubro (0 = Janeiro)
+            8,
+            15,
+            0,
+            0,
+            0
+        );
+
+        // Até o momento em que o script for executado
+        const fim = new Date();
+
+
+        console.log(
+            "🕒 Início:",
+            inicio.toLocaleString("pt-BR")
+        );
+
+        console.log(
+            "🕒 Até:",
+            fim.toLocaleString("pt-BR")
+        );
+
+
+        // =========================================================
+        // 3. FILTRAR HISTÓRICO
+        // =========================================================
+
+        const encontrados = historico.filter(item => {
+
+            if (!item.dataCriacao) {
+                return false;
+            }
+
+            const dataRegistro =
+                new Date(item.dataCriacao);
+
+            return (
+                dataRegistro >= inicio &&
+                dataRegistro <= fim
+            );
+        });
+
+
+        // =========================================================
+        // 4. ORDENAR POR HORÁRIO
+        // =========================================================
+
+        encontrados.sort(
+            (a, b) =>
+                new Date(a.dataCriacao) -
+                new Date(b.dataCriacao)
+        );
+
+
+        // =========================================================
+        // 5. NENHUM LEAD ENCONTRADO
+        // =========================================================
+
+        if (!encontrados.length) {
+
+            console.log("");
+            console.log(
+                "⚠️ Nenhum lead foi roteado após as 15:00."
+            );
+
+            alert(
+                "ℹ️ Nenhum roteamento encontrado.\n\n" +
+                "Data: 08/10/2026\n" +
+                "A partir das: 15:00"
+            );
+
+            return;
+        }
+
+
+        // =========================================================
+        // 6. PREPARAR RESULTADO
+        // =========================================================
+
+        const resultado = encontrados.map(
+            (item, indice) => {
+
+                const data =
+                    new Date(item.dataCriacao);
+
+                return {
+
+                    "#":
+                        indice + 1,
+
+                    "Data":
+                        data.toLocaleDateString(
+                            "pt-BR"
+                        ),
+
+                    "Hora":
+                        data.toLocaleTimeString(
+                            "pt-BR"
+                        ),
+
+                    "Nome":
+                        item.nome || "",
+
+                    "Email":
+                        item.email || "",
+
+                    "Telefone":
+                        item.telefone || "",
+
+                    "Vendedor":
+                        item.vendedor || "",
+
+                    "Status":
+                        item.status || "",
+
+                    "Lead ID":
+                        item.leadId || "",
+
+                    "Email Original":
+                        item.emailOriginalId || "",
+
+                    "Email Resposta":
+                        item.emailRespostaId || "",
+
+                    "Versão":
+                        item.versao || ""
+                };
+            }
+        );
+
+
+        // =========================================================
+        // 7. MOSTRAR TODOS OS LEADS
+        // =========================================================
+
+        console.log("");
+        console.log("==========================================");
+        console.log("📋 LEADS ROTEADOS APÓS AS 15:00");
+        console.log("==========================================");
+
+        console.table(resultado);
+
+
+        // =========================================================
+        // 8. RESUMO POR VENDEDOR
+        // =========================================================
+
+        const resumo = {};
+
+        encontrados.forEach(item => {
+
+            const vendedor =
+                item.vendedor || "Sem vendedor";
+
+            if (!resumo[vendedor]) {
+                resumo[vendedor] = 0;
+            }
+
+            resumo[vendedor]++;
+
+        });
+
+
+        const resumoTabela =
+            Object.entries(resumo)
+                .map(
+                    ([vendedor, quantidade]) => ({
+                        Vendedor: vendedor,
+                        Quantidade: quantidade
+                    })
+                );
+
+
+        console.log("");
+        console.log("==========================================");
+        console.log("👥 DISTRIBUIÇÃO POR VENDEDOR");
+        console.log("==========================================");
+
+        console.table(resumoTabela);
+
+
+        // =========================================================
+        // 9. TOTAL
+        // =========================================================
+
+        console.log("");
+        console.log("==========================================");
+
+        console.log(
+            "✅ TOTAL ROTEADO:",
+            encontrados.length
+        );
+
+        console.log("==========================================");
+
+
+        // =========================================================
+        // 10. MONTAR RESUMO
+        // =========================================================
+
+        let mensagem =
+            "📊 ROTEAMENTO ESSENTRA\n\n" +
+
+            "📅 Data: 08/10/2026\n" +
+            "🕒 A partir das: 15:00\n\n" +
+
+            "✅ Total roteado: " +
+            encontrados.length +
+            "\n\n" +
+
+            "👥 DISTRIBUIÇÃO:\n";
+
+
+        resumoTabela.forEach(item => {
+
+            mensagem +=
+                "\n" +
+                item.Vendedor +
+                ": " +
+                item.Quantidade;
+
+        });
+
+
+        mensagem +=
+            "\n\n📋 A lista completa está no Console.";
+
+
+        // =========================================================
+        // 11. MOSTRAR RESUMO
+        // =========================================================
+
+        alert(mensagem);
+
+
+        // =========================================================
+        // 12. DEIXAR RESULTADO DISPONÍVEL
+        // =========================================================
+
+        window.historicoRoteamento =
+            encontrados;
+
+
+        console.log("");
+        console.log(
+            "💾 Resultado salvo temporariamente em:"
+        );
+
+        console.log(
+            "window.historicoRoteamento"
+        );
+
+
+    } catch (erro) {
+
+        console.error(
+            "❌ ERRO AO CONSULTAR HISTÓRICO:",
+            erro
+        );
+
+        alert(
+            "❌ Ocorreu um erro ao consultar o histórico.\n\n" +
+            "Veja o Console para mais detalhes."
+        );
+
+    }
+
+})();
