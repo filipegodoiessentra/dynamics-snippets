@@ -12,7 +12,7 @@
   const LILIAN = { nome: "Lilian Lopes", id: "d5ca6b9c-6350-f011-877b-000d3adf9cf8" };
 
   const FILA_ATENDIMENTO = [LILIAN];
-  const FILA_343_344 = [USUARIOS["338"], USUARIOS["340"], USUARIOS["346"]];
+  const FILA_343_344 = [USUARIOS["338"], USUARIOS["340"]];
   const REGEX_COTACAO = /cotac|cotar|orcament|amostra|sample/i;
   const REGEX_ATENDIMENTO = /fup|follow|release|pedido|purchase|posicao de entrega|posição de entrega|nota fiscal|ordem de compra|\bnf\b|boleto/i;
   const REGEX_LUCIMARA = /\b(weg|mwm|elgin)\b/i;
