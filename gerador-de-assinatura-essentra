@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador de Assinatura - Essentra</title>
+    <!-- Importando Tailwind CSS para a interface do gerador -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f9fafb; 
+        }
+        /* Classe para a notificação em tela (Toast) em vez de usar alert() */
+        .toast-message {
+            visibility: hidden;
+            opacity: 0;
+            transform: translateY(20px) translateX(-50%);
+            transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s;
+        }
+        .toast-message.show {
+            visibility: visible;
+            opacity: 1;
+            transform: translateY(0) translateX(-50%);
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex flex-col items-center justify-center">
+
+    <div class="max-w-5xl w-full bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+        
+        <div class="bg-gray-900 p-6 text-white text-center">
+            <h1 class="text-2xl font-bold tracking-wide">Gerador de Assinatura Essentra</h1>
+            <p class="text-gray-400 text-sm mt-2">Preencha seus dados abaixo e copie a assinatura para o seu e-mail.</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 p-6 md:p-10">
+            
+            <div class="flex flex-col gap-5">
+                <h2 class="text-lg font-semibold text-gray-800 border-b pb-2">1. Seus Dados</h2>
+                
+                <div class="flex flex-col">
+                    <label for="input-name" class="text-sm font-medium text-gray-600 mb-1">Nome Completo</label>
+                    <input type="text" id="input-name" placeholder="Ex: Cristiana Roseto" 
+                           class="px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all">
+                </div>
+
+                <div class="flex flex-col">
+                    <label for="input-title" class="text-sm font-medium text-gray-600 mb-1">Cargo (Title)</label>
+                    <input type="text" id="input-title" placeholder="Ex: Inside Sales" 
+                           class="px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all">
+                </div>
+
+                <div class="flex flex-col">
+                    <label for="input-email" class="text-sm font-medium text-gray-600 mb-1">E-mail</label>
+                    <input type="email" id="input-email" placeholder="Ex: CristianaRoseto@essentra.com" 
+                           class="px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all">
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-5 lg:border-l lg:border-gray-200 lg:pl-8">
+                <h2 class="text-lg font-semibold text-gray-800 border-b pb-2">2. Visualização (Preview)</h2>
+                
+                <div class="p-4 bg-white border-2 border-dashed border-gray-300 rounded-xl overflow-x-auto flex items-center justify-start bg-gray-50 min-h-[160px]">
+                    
+                    <!-- IMPORTANTE: Usando tabelas e inline CSS para compatibilidade máxima com Outlook/Gmail -->
+                    <div id="signature-container" style="background-color: #ffffff; padding: 10px;">
+                        <table cellpadding="0" cellspacing="0" border="0" style="font-family: Arial, Helvetica, sans-serif; font-size: 11.5px; color: #555555; line-height: 1.35; width: 100%; max-width: 850px;">
+                            <tr>
+                                <td>
+                                    <table cellpadding="0" cellspacing="0" border="0" style="font-family: Arial, Helvetica, sans-serif; font-size: 11.5px; color: #555555; line-height: 1.35;">
+                                        <tr>
+                                            <!-- Coluna 1: Logo -->
+                                            <td valign="top" style="padding-right: 15px;">
+                                                <img src="https://www.essentracomponents.com.br/set-ap/assets/essentra-logo.png" width="165" alt="Essentra Components" style="display: block; width: 165px; max-width: 165px; border: none; margin-top: 1px;" />
+                                            </td>
+                                            
+                                            <!-- Coluna 2: Dados Pessoais Dinâmicos -->
+                                            <td valign="top" style="padding-right: 25px; white-space: nowrap;">
+                                                <strong id="sig-name" style="font-size: 12.5px; color: #555555;">Cristiana Roseto</strong><br>
+                                                <span id="sig-title" style="color: #555555;">Inside Sales</span><br>
+                                                <a id="sig-email" href="mailto:CristianaRoseto@essentra.com" style="color: #0563c1; text-decoration: underline;">CristianaRoseto@essentra.com</a><br>
+                                                <span style="color: #555555;">T:+55 (19) 3847-8887</span><br>
+                                                <a href="https://www.essentracomponents.com" style="color: #0563c1; text-decoration: underline;">www.essentracomponents.com</a>
+                                            </td>
+                                            
+                                            <!-- Coluna 3: Endereço (Fixo - permitindo quebra de linha para não empurrar) -->
+                                            <td valign="top">
+                                                <strong style="font-size: 12.5px; color: #555555;">Essentra</strong><br>
+                                                <span style="color: #555555;">
+                                                    Praça Emílio Marconato, 1.000 – Galpão G38 ou Sala 7 do Prédio Comercial Núcleo Residencial Dr João Aldo Nassif<br>
+                                                    Jaguariuna<br>
+                                                    SP 13.916-074<br>
+                                                    Brazil
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr>
+                                <!-- Aviso Legal / Disclaimer -->
+                                <td style="padding-top: 20px;">
+                                    <p style="font-size: 10px; color: #777777; line-height: 1.3; margin: 0; text-align: justify;">
+                                        Este e-mail pode conter informações de propriedade material e/ou intelectual. Este e-mail é de interesse apenas ao destinatário. Qualquer uso não autorizado poderá ser considerado ilegal. Se você não é o destinatário pretendido não deverá copiar, distribuir ou tomar qualquer ação a este respeito. Se recebeu este-mail por engano, por favor delete-o e nos notifique imediatamente através de um email. Saiba que podemos monitorar e-mails de entrada e saída, para garantir o cumprimento da Política de Utilização da Tecnologia da Informação da Essentra.
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                    
+                </div>
+
+                <button onclick="copySignature()" class="mt-auto w-full py-3 px-4 bg-gray-900 hover:bg-red-700 text-white font-semibold rounded-lg shadow-md transition-colors flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V168h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z"></path></svg>
+                    Copiar Assinatura
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast-message fixed bottom-8 left-1/2 bg-green-600 text-white px-6 py-3 rounded-full shadow-xl font-medium flex items-center gap-2 z-50">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256"><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"></path></svg>
+        <span id="toast-text">Assinatura copiada com sucesso!</span>
+    </div>
+
+    <script>
+        // Captura os elementos de input
+        const inputName = document.getElementById('input-name');
+        const inputTitle = document.getElementById('input-title');
+        const inputEmail = document.getElementById('input-email');
+
+        // Captura os elementos onde os dados serão exibidos na assinatura
+        const sigName = document.getElementById('sig-name');
+        const sigTitle = document.getElementById('sig-title');
+        const sigEmail = document.getElementById('sig-email');
+
+        // Textos padrão para quando os campos estiverem vazios
+        const defaultName = "Cristiana Roseto";
+        const defaultTitle = "Inside Sales";
+        const defaultEmail = "CristianaRoseto@essentra.com";
+
+        function updatePreview() {
+            sigName.textContent = inputName.value.trim() || defaultName;
+            sigTitle.textContent = inputTitle.value.trim() || defaultTitle;
+            
+            const emailValue = inputEmail.value.trim() || defaultEmail;
+            sigEmail.textContent = emailValue;
+            sigEmail.href = `mailto:${emailValue}`;
+        }
+
+        // Adiciona os eventos para detectar a digitação
+        inputName.addEventListener('input', updatePreview);
+        inputTitle.addEventListener('input', updatePreview);
+        inputEmail.addEventListener('input', updatePreview);
+
+        function copySignature() {
+            const container = document.getElementById('signature-container');
+            
+            // Cria uma seleção programática do conteúdo da tabela
+            const range = document.createRange();
+            range.selectNodeContents(container);
+            
+            const selection = window.getSelection();
+            selection.removeAllRanges(); // Limpa seleções anteriores
+            selection.addRange(range);   // Aplica a nova seleção
+
+            try {
+                // Executa o comando de cópia padrão do navegador para pegar o HTML renderizado
+                document.execCommand('copy');
+                showToast("Assinatura copiada! Cole no seu Outlook ou Gmail.", true);
+            } catch (err) {
+                console.error("Falha ao copiar a assinatura: ", err);
+                showToast("Erro ao copiar. Selecione o texto manualmente e dê Ctrl+C.", false);
+            } finally {
+                // Remove a seleção visual para não ficar com fundo azul na tela
+                selection.removeAllRanges();
+            }
+        }
+
+        let toastTimeout;
+        function showToast(message, isSuccess = true) {
+            const toast = document.getElementById('toast');
+            const toastText = document.getElementById('toast-text');
+            
+            toastText.textContent = message;
+            
+            // Altera a cor baseado no sucesso ou erro
+            if(isSuccess) {
+                toast.classList.replace('bg-red-600', 'bg-green-600');
+            } else {
+                toast.classList.replace('bg-green-600', 'bg-red-600');
+            }
+
+            toast.classList.add('show');
+            
+            // Limpa o timeout anterior se clicar várias vezes rápido
+            clearTimeout(toastTimeout);
+            
+            // Oculta a notificação após 3.5 segundos
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3500);
+        }
+    </script>
+</body>
+</html>
