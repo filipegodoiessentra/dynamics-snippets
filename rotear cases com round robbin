@@ -13,6 +13,7 @@
 
   const FILA_ATENDIMENTO = [LILIAN];
   const FILA_343_344 = [USUARIOS["338"], USUARIOS["340"]];
+  const FILA_346_TEMP = [USUARIOS["338"], USUARIOS["340"]];
   const REGEX_COTACAO = /cotac|cotar|orcament|amostra|sample/i;
   const REGEX_ATENDIMENTO = /fup|follow|release|pedido|purchase|posicao de entrega|posição de entrega|nota fiscal|ordem de compra|\bnf\b|boleto/i;
   const REGEX_LUCIMARA = /\b(weg|mwm|elgin)\b/i;
@@ -152,12 +153,24 @@
         } else if (REGEX_ATENDIMENTO.test(tituloN)) {
           usuario = proximo("rr_atendimento", FILA_ATENDIMENTO); regra = "Atendimento Comercial";
           detalheRegra = usuario ? "Título identificado como atendimento comercial." : "Fila de Atendimento Comercial sem usuários disponíveis.";
-        } else if (["338", "340", "346"].includes(codigo)) {
-          if (REGEX_COTACAO.test(tituloN)) {
-            usuario = USUARIOS[codigo]; regra = `Cotação - Território ${codigo}`; detalheRegra = "Título identificado como cotação.";
-          } else {
-            regra = `Território ${codigo}`; detalheRegra = "Território identificado, porém o título não foi classificado como cotação.";
-          }
+      } else if (["338", "340", "346"].includes(codigo)) {
+
+  if (REGEX_COTACAO.test(tituloN)) {
+
+    if (codigo === "346") {
+      usuario = proximo("rr_346_temp", FILA_346_TEMP);
+      regra = "Cotação - Território 346 (cobertura temporária)";
+      detalheRegra = "Cristiana ausente. Rodízio entre Matheus e Pablo.";
+    } else {
+      usuario = USUARIOS[codigo];
+      regra = `Cotação - Território ${codigo}`;
+      detalheRegra = "Título identificado como cotação.";
+    }
+
+  } else {
+    regra = `Território ${codigo}`;
+    detalheRegra = "Território identificado, porém o título não foi classificado como cotação.";
+  }
         } else if (codigo === "336") {
           usuario = proximo("rr_atendimento", FILA_ATENDIMENTO); regra = "Território 336 - Atendimento Comercial";
           detalheRegra = usuario ? "Direcionado para o rodízio de Atendimento Comercial." : "Fila de Atendimento Comercial sem usuários disponíveis.";
