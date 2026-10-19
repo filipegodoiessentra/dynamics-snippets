@@ -22,12 +22,6 @@ function obterSaudacao() {
 
 /**
  * Normaliza o nome do cabeçalho.
- *
- * Exemplos:
- * "NOME DO VENDEDOR" -> "NOME_DO_VENDEDOR"
- * "Nome do Vendedor" -> "NOME_DO_VENDEDOR"
- * "COTAÇÃO" -> "COTACAO"
- * "E-mail" -> "E_MAIL"
  */
 function normalizarCabecalho(valor) {
     return String(valor ?? "")
@@ -40,11 +34,7 @@ function normalizarCabecalho(valor) {
 }
 
 /**
- * Remove underscores para aceitar também placeholders como:
- *
- * {{NOME_DO_VENDEDOR}}
- * {{NOME DO VENDEDOR}}
- * {{NOMEDOVENDEDOR}}
+ * Remove underscores para aceitar placeholders compactos.
  */
 function criarChaveCompacta(valor) {
     return normalizarCabecalho(valor).replace(/_/g, "");
@@ -52,10 +42,6 @@ function criarChaveCompacta(valor) {
 
 /**
  * Cria um mapa com os dados da linha.
- *
- * O mapa é criado UMA única vez por linha
- * dentro de montarEmailDaLinha() e reutilizado
- * por todas as leituras de campo daquela linha.
  */
 function criarMapaDaLinha(linha) {
     const mapa = {};
@@ -64,9 +50,7 @@ function criarMapaDaLinha(linha) {
         const chaveNormalizada = normalizarCabecalho(cabecalho);
         const chaveCompacta = criarChaveCompacta(cabecalho);
 
-        if (!chaveNormalizada) {
-            return;
-        }
+        if (!chaveNormalizada) return;
 
         const valorTratado = valor ?? "";
 
@@ -80,9 +64,6 @@ function criarMapaDaLinha(linha) {
     return mapa;
 }
 
-/**
- * Obtém um valor a partir de um mapa já criado.
- */
 function obterCampoDoMapa(mapa, nomeCampo) {
     const chaveNormalizada = normalizarCabecalho(nomeCampo);
     const chaveCompacta = criarChaveCompacta(nomeCampo);
@@ -90,27 +71,16 @@ function obterCampoDoMapa(mapa, nomeCampo) {
     if (Object.prototype.hasOwnProperty.call(mapa, chaveNormalizada)) {
         return mapa[chaveNormalizada];
     }
-
     if (Object.prototype.hasOwnProperty.call(mapa, chaveCompacta)) {
         return mapa[chaveCompacta];
     }
-
     return "";
 }
 
-/**
- * Obtém um valor da linha usando o nome do cabeçalho.
- *
- * Mantida para compatibilidade com qualquer uso avulso.
- * Internamente delega para obterCampoDoMapa().
- */
 function obterCampo(linha, nomeCampo) {
     return obterCampoDoMapa(criarMapaDaLinha(linha), nomeCampo);
 }
 
-/**
- * Substitui placeholders usando um mapa já criado.
- */
 function substituirVariaveisComMapa(texto, mapaOriginal, variaveisExtras = {}) {
     const mapa = Object.assign({}, mapaOriginal);
     const variaveisNaoEncontradas = new Set();
@@ -119,13 +89,8 @@ function substituirVariaveisComMapa(texto, mapaOriginal, variaveisExtras = {}) {
         const chaveNormalizada = normalizarCabecalho(nome);
         const chaveCompacta = criarChaveCompacta(nome);
 
-        if (chaveNormalizada) {
-            mapa[chaveNormalizada] = valor ?? "";
-        }
-
-        if (chaveCompacta) {
-            mapa[chaveCompacta] = valor ?? "";
-        }
+        if (chaveNormalizada) mapa[chaveNormalizada] = valor ?? "";
+        if (chaveCompacta) mapa[chaveCompacta] = valor ?? "";
     });
 
     const textoOriginal = String(texto ?? "");
@@ -136,26 +101,14 @@ function substituirVariaveisComMapa(texto, mapaOriginal, variaveisExtras = {}) {
             const chaveNormalizada = normalizarCabecalho(nomeVariavel);
             const chaveCompacta = criarChaveCompacta(nomeVariavel);
 
-            if (
-                Object.prototype.hasOwnProperty.call(
-                    mapa,
-                    chaveNormalizada
-                )
-            ) {
+            if (Object.prototype.hasOwnProperty.call(mapa, chaveNormalizada)) {
                 return String(mapa[chaveNormalizada]);
             }
-
-            if (
-                Object.prototype.hasOwnProperty.call(
-                    mapa,
-                    chaveCompacta
-                )
-            ) {
+            if (Object.prototype.hasOwnProperty.call(mapa, chaveCompacta)) {
                 return String(mapa[chaveCompacta]);
             }
 
             variaveisNaoEncontradas.add(placeholderOriginal);
-
             return placeholderOriginal;
         }
     );
@@ -166,18 +119,6 @@ function substituirVariaveisComMapa(texto, mapaOriginal, variaveisExtras = {}) {
     };
 }
 
-/**
- * Substitui placeholders dinamicamente.
- *
- * Exemplos:
- * {{NOME}}
- * {{NOME DO VENDEDOR}}
- * {{NOME_DO_VENDEDOR}}
- * {{COTAÇÃO}}
- * {{COTACAO_COMPLETA}}
- * {{SAUDACAO}}
- * {{CHAVE}}
- */
 function substituirVariaveis(texto, linha, variaveisExtras = {}) {
     return substituirVariaveisComMapa(
         texto,
@@ -186,9 +127,6 @@ function substituirVariaveis(texto, linha, variaveisExtras = {}) {
     );
 }
 
-/**
- * Converte quebras de linha em HTML.
- */
 function converterParaHtml(texto) {
     return String(texto ?? "")
         .replace(/\r\n/g, "\n")
@@ -197,100 +135,39 @@ function converterParaHtml(texto) {
         .replace(/  /g, "&nbsp;&nbsp;");
 }
 
-/**
- * Verificação básica de formato de e-mail.
- *
- * Objetivo: pegar erros humanos comuns da planilha.
- * Não pretende implementar a RFC completa.
- *
- * Inválidos:
- * "abc"
- * "fulano@"
- * "@empresa.com"
- * "email sem dominio"
- * "fulano@empresa"
- */
 function emailPareceValido(email) {
     const valor = String(email ?? "").trim();
-
-    if (!valor) {
-        return false;
-    }
-
-    // Não aceita espaços, vírgulas ou ponto e vírgula
-    // (evita várias pessoas na mesma célula).
-    if (/[\s,;]/.test(valor)) {
-        return false;
-    }
-
-    // Exatamente um "@".
-    if (valor.split("@").length !== 2) {
-        return false;
-    }
+    if (!valor) return false;
+    if (/[\s,;]/.test(valor)) return false;
+    if (valor.split("@").length !== 2) return false;
 
     const [usuario, dominio] = valor.split("@");
-
-    if (!usuario || !dominio) {
-        return false;
-    }
-
-    // O domínio precisa ter ponto e um sufixo com 2+ letras.
-    if (!/^[^.].*\.[A-Za-z]{2,}$/.test(dominio)) {
-        return false;
-    }
-
-    // Sem pontos duplicados ou nas pontas.
-    if (/\.\./.test(valor) || /^\./.test(usuario) || /\.$/.test(usuario)) {
-        return false;
-    }
+    if (!usuario || !dominio) return false;
+    if (!/^[^.].*\.[A-Za-z]{2,}$/.test(dominio)) return false;
+    if (/\.\./.test(valor) || /^\./.test(usuario) || /\.$/.test(usuario)) return false;
 
     return /^[A-Za-z0-9._%+\-']+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/.test(valor);
 }
 
-/**
- * Formata milissegundos em horas, minutos e segundos.
- */
 function formatarTempo(milliseconds) {
     const totalSegundos = Math.floor(milliseconds / 1000);
-
     const horas = Math.floor(totalSegundos / 3600);
     const minutos = Math.floor((totalSegundos % 3600) / 60);
     const segundos = totalSegundos % 60;
 
     const partes = [];
-
-    if (horas > 0) {
-        partes.push(`${horas}h`);
-    }
-
-    if (minutos > 0 || horas > 0) {
-        partes.push(`${minutos}m`);
-    }
-
+    if (horas > 0) partes.push(`${horas}h`);
+    if (minutos > 0 || horas > 0) partes.push(`${minutos}m`);
     partes.push(`${segundos}s`);
 
     return partes.join(" ");
 }
 
-/**
- * Obtém a mensagem de erro de diferentes formatos retornados pelo Dataverse.
- */
 function obterMensagemErro(erro) {
-    if (!erro) {
-        return "Erro desconhecido";
-    }
-
-    if (typeof erro === "string") {
-        return erro;
-    }
-
-    if (erro.message) {
-        return erro.message;
-    }
-
-    if (erro.error && erro.error.message) {
-        return erro.error.message;
-    }
+    if (!erro) return "Erro desconhecido";
+    if (typeof erro === "string") return erro;
+    if (erro.message) return erro.message;
+    if (erro.error && erro.error.message) return erro.error.message;
 
     try {
         return JSON.stringify(erro);
@@ -299,17 +176,7 @@ function obterMensagemErro(erro) {
     }
 }
 
-/**
- * Monta os dados finais de um e-mail.
- *
- * FONTE ÚNICA de composição do e-mail.
- *
- * Usada pela pré-validação, pelo preview
- * e pelo disparo real, garantindo que o que
- * aparece no popup é exatamente o que será enviado.
- */
 function montarEmailDaLinha(linha, saudacao) {
-    // O mapa da linha é criado UMA vez e reutilizado.
     const mapa = criarMapaDaLinha(linha);
 
     const id = String(obterCampoDoMapa(mapa, "ID") ?? "").trim();
@@ -320,33 +187,21 @@ function montarEmailDaLinha(linha, saudacao) {
     const corpoBase = obterCampoDoMapa(mapa, "TEXTO");
     const chave = String(obterCampoDoMapa(mapa, "CHAVE") ?? "").trim();
 
-   let assuntoDinamico = `${tituloBase}`;
+    let assuntoDinamico = `${tituloBase}`;
 
-if (nCotacao) {
-    assuntoDinamico += ` ${nCotacao}`;
-}
+    if (nCotacao) assuntoDinamico += ` ${nCotacao}`;
+    if (id) assuntoDinamico += ` - ${id}`;
+    if (csal) assuntoDinamico += ` - ${csal}`;
 
-if (id) {
-    assuntoDinamico += ` - ${id}`;
-}
-
-if (csal) {
-    assuntoDinamico += ` - ${csal}`;
-}
-
-assuntoDinamico = assuntoDinamico.trim();
+    assuntoDinamico = assuntoDinamico.trim();
 
     const resultadoSubstituicao = substituirVariaveisComMapa(
         corpoBase,
         mapa,
-        {
-            SAUDACAO: saudacao
-        }
+        { SAUDACAO: saudacao }
     );
 
-    const corpoFormatado = converterParaHtml(
-        resultadoSubstituicao.texto
-    );
+    const corpoFormatado = converterParaHtml(resultadoSubstituicao.texto);
 
     return {
         id,
@@ -358,19 +213,10 @@ assuntoDinamico = assuntoDinamico.trim();
         chave,
         assunto: assuntoDinamico,
         corpo: corpoFormatado,
-        variaveisNaoEncontradas:
-            resultadoSubstituicao.variaveisNaoEncontradas
+        variaveisNaoEncontradas: resultadoSubstituicao.variaveisNaoEncontradas
     };
 }
 
-/**
- * =========================================================
- * PRÉ-VALIDAÇÃO DE TODA A PLANILHA
- * =========================================================
- *
- * Percorre TODOS os registros antes de qualquer envio.
- * Nenhum e-mail é enviado nesta etapa.
- */
 function preValidarPlanilha(lista) {
     const saudacao = obterSaudacao();
     const problemas = [];
@@ -378,13 +224,10 @@ function preValidarPlanilha(lista) {
 
     lista.forEach((linha, indice) => {
         const numeroLinhaExcel = indice + 2;
-
-        // Mesma função usada no preview e no disparo.
         const email = montarEmailDaLinha(linha, saudacao);
 
         const registrarProblema = (mensagem) => {
             linhasComProblema.add(numeroLinhaExcel);
-
             problemas.push({
                 linhaExcel: numeroLinhaExcel,
                 destinatario: email.destinatario || "Sem e-mail",
@@ -394,20 +237,9 @@ function preValidarPlanilha(lista) {
             });
         };
 
-        // Campos obrigatórios.
-        if (!email.id) {
-            registrarProblema("Campo obrigatório ID ausente");
-        }
-
-        if (!email.tituloBase) {
-            registrarProblema(
-                "Campo obrigatório TITULO DO EMAIL ausente"
-            );
-        }
-
-        if (!email.corpoBase) {
-            registrarProblema("Campo obrigatório TEXTO ausente");
-        }
+        if (!email.id) registrarProblema("Campo obrigatório ID ausente");
+        if (!email.tituloBase) registrarProblema("Campo obrigatório TITULO DO EMAIL ausente");
+        if (!email.corpoBase) registrarProblema("Campo obrigatório TEXTO ausente");
 
         if (!email.destinatario) {
             registrarProblema("Campo obrigatório EMAIL ausente");
@@ -415,26 +247,15 @@ function preValidarPlanilha(lista) {
             registrarProblema("EMAIL inválido");
         }
 
-        // Placeholders sem correspondência bloqueiam a linha.
         if (email.variaveisNaoEncontradas.length > 0) {
-            registrarProblema(
-                "Variáveis não encontradas: " +
-                email.variaveisNaoEncontradas.join(", ")
-            );
+            registrarProblema("Variáveis não encontradas: " + email.variaveisNaoEncontradas.join(", "));
         }
 
-        // Placeholder malformado, ex.: "{{NOME" ou "NOME}}".
         const textoOriginal = String(email.corpoBase ?? "");
-        const semPlaceholders = textoOriginal.replace(
-            /\{\{\s*[^{}]+?\s*\}\}/g,
-            ""
-        );
+        const semPlaceholders = textoOriginal.replace(/\{\{\s*[^{}]+?\s*\}\}/g, "");
 
         if (/\{\{|\}\}/.test(semPlaceholders)) {
-            registrarProblema(
-                "Placeholder malformado no TEXTO " +
-                "(chaves {{ }} desbalanceadas)"
-            );
+            registrarProblema("Placeholder malformado no TEXTO (chaves {{ }} desbalanceadas)");
         }
     });
 
@@ -450,9 +271,10 @@ function preValidarPlanilha(lista) {
     };
 }
 
-/**
- * Cria a estrutura base de um modal (overlay + caixa).
- */
+// =========================================================
+// UI COMPONENTS - ESTILO MÉXICO 🇲🇽
+// =========================================================
+
 function criarEstruturaModal(largura) {
     const overlay = document.createElement("div");
 
@@ -462,13 +284,15 @@ function criarEstruturaModal(largura) {
         left: "0",
         width: "100%",
         height: "100%",
-        background: "rgba(0, 0, 0, 0.55)",
+        background: "rgba(0, 0, 0, 0.65)",
+        backdropFilter: "blur(3px)", // Toque moderno
         zIndex: "999999",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         padding: "20px",
-        boxSizing: "border-box"
+        boxSizing: "border-box",
+        animation: "fadeIn 0.2s ease-out"
     });
 
     const modal = document.createElement("div");
@@ -479,71 +303,98 @@ function criarEstruturaModal(largura) {
         maxHeight: "90vh",
         background: "#ffffff",
         borderRadius: "12px",
-        boxShadow: "0 20px 60px rgba(0, 0, 0, 0.30)",
+        boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
         fontFamily: "'Segoe UI', Arial, sans-serif",
         overflow: "hidden",
         display: "flex",
-        flexDirection: "column"
+        flexDirection: "column",
+        position: "relative"
     });
 
+    // FAIXA TRICOLOR MEXICANA NO TOPO (Verde, Branco, Vermelho)
+    const faixaTricolor = document.createElement("div");
+    Object.assign(faixaTricolor.style, {
+        height: "6px",
+        width: "100%",
+        background: "linear-gradient(to right, #006847 33.33%, #ffffff 33.33%, #ffffff 66.66%, #CE1126 66.66%)"
+    });
+
+    modal.appendChild(faixaTricolor);
     overlay.appendChild(modal);
 
     return { overlay, modal };
 }
 
-/**
- * Cria o cabeçalho colorido de um modal.
- *
- * Usa textContent, nunca innerHTML.
- */
 function criarCabecalhoModal(textoTitulo, textoSubtitulo, cores) {
     const header = document.createElement("div");
 
     Object.assign(header.style, {
-        padding: "22px 24px",
+        padding: "24px 30px",
         background: cores.fundo,
-        color: cores.texto
+        color: cores.texto,
+        borderBottom: "1px solid rgba(0,0,0,0.05)"
     });
 
-    const titulo = document.createElement("div");
-titulo.style.display = "flex";
-titulo.style.alignItems = "center";
-titulo.style.gap = "10px";
+    const tituloContainer = document.createElement("div");
+    Object.assign(tituloContainer.style, {
+        display: "flex",
+        alignItems: "center"
+    });
 
-    titulo.innerHTML = `
-    <span style="font-size:30px;">🇲🇽</span>
-    <span>${textoTitulo}</span>
-`;
+    // BADGE COM TEXTO "MX" EM VERMELHO
+    const badgeFlag = document.createElement("div");
+    Object.assign(badgeFlag.style, {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "48px",
+        height: "48px",
+        background: "#ffffff",
+        borderRadius: "50%",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+        marginRight: "18px",
+        flexShrink: "0"
+    });
+    
+    // Estilo do texto "MX": vermelho da bandeira mexicana e fonte grossa
+    badgeFlag.innerHTML = `<span style="font-size:22px; font-weight:900; color:#CE1126; letter-spacing: 1px;">MX</span>`;
+
+    const textoContainer = document.createElement("div");
+
+    const titulo = document.createElement("div");
+    titulo.textContent = textoTitulo.replace("🇲🇽 ", ""); // Remove o emoji do título
 
     Object.assign(titulo.style, {
-        fontSize: "21px",
-        fontWeight: "600"
+        fontSize: "22px",
+        fontWeight: "700",
+        letterSpacing: "-0.5px"
     });
 
     const subtitulo = document.createElement("div");
-
     subtitulo.textContent = textoSubtitulo;
 
     Object.assign(subtitulo.style, {
-        fontSize: "13px",
-        marginTop: "6px",
+        fontSize: "14px",
+        marginTop: "4px",
         opacity: "0.9"
     });
 
-    header.appendChild(titulo);
-    header.appendChild(subtitulo);
+    textoContainer.appendChild(titulo);
+    textoContainer.appendChild(subtitulo);
+    
+    tituloContainer.appendChild(badgeFlag);
+    tituloContainer.appendChild(textoContainer);
+
+    header.appendChild(tituloContainer);
 
     return header;
 }
 
-/**
- * Cria o container de conteúdo rolável de um modal.
- */
 function criarConteudoModal() {
     const conteudo = document.createElement("div");
 
     Object.assign(conteudo.style, {
-        padding: "24px",
+        padding: "24px 30px",
         overflowY: "auto",
         flex: "1",
         color: "#242424"
@@ -552,27 +403,21 @@ function criarConteudoModal() {
     return conteudo;
 }
 
-/**
- * Cria o rodapé de um modal.
- */
 function criarRodapeModal() {
     const footer = document.createElement("div");
 
     Object.assign(footer.style, {
-        padding: "16px 24px",
-        borderTop: "1px solid #e1e1e1",
-        background: "#fafafa",
+        padding: "16px 30px",
+        borderTop: "1px solid #e5e7eb",
+        background: "#f9fafb",
         display: "flex",
         justifyContent: "flex-end",
-        gap: "10px"
+        gap: "12px"
     });
 
     return footer;
 }
 
-/**
- * Cria um botão padrão.
- */
 function criarBotao(texto, estilo) {
     const botao = document.createElement("button");
 
@@ -580,48 +425,55 @@ function criarBotao(texto, estilo) {
     botao.textContent = texto;
 
     Object.assign(botao.style, Object.assign({
-        padding: "10px 22px",
+        padding: "10px 24px",
         borderRadius: "6px",
         border: "none",
         cursor: "pointer",
         fontSize: "14px",
-        fontWeight: "600"
+        fontWeight: "600",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+        transition: "all 0.15s ease"
     }, estilo));
+
+    // Efeitos interativos
+    botao.onmouseover = () => botao.style.filter = "brightness(1.1)";
+    botao.onmouseout = () => botao.style.filter = "brightness(1)";
+    botao.onmousedown = () => botao.style.transform = "scale(0.96)";
+    botao.onmouseup = () => botao.style.transform = "scale(1)";
 
     return botao;
 }
 
-/**
- * Cria um cartão de indicador numérico.
- */
 function criarIndicador(tituloIndicador, valor, cor) {
     const card = document.createElement("div");
 
     Object.assign(card.style, {
         padding: "16px",
-        background: "#fafafa",
-        border: "1px solid #e1e1e1",
-        borderRadius: "8px"
+        background: "#ffffff",
+        border: "1px solid #e5e7eb",
+        borderLeft: `5px solid ${cor}`, // Borda temática com a cor do dado
+        borderRadius: "8px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
     });
 
     const label = document.createElement("div");
-
     label.textContent = tituloIndicador;
 
     Object.assign(label.style, {
         fontSize: "12px",
-        color: "#616161",
-        marginBottom: "5px"
+        color: "#6b7280",
+        fontWeight: "600",
+        letterSpacing: "0.5px",
+        marginBottom: "6px"
     });
 
     const numero = document.createElement("div");
-
     numero.textContent = String(valor);
 
     Object.assign(numero.style, {
-        fontSize: "24px",
-        fontWeight: "600",
-        color: cor
+        fontSize: "26px",
+        fontWeight: "700",
+        color: "#111827"
     });
 
     card.appendChild(label);
@@ -630,55 +482,42 @@ function criarIndicador(tituloIndicador, valor, cor) {
     return card;
 }
 
-/**
- * Cria a lista rolável de ocorrências.
- *
- * Todos os textos entram via textContent,
- * portanto conteúdo vindo da planilha nunca
- * é interpretado como HTML.
- */
 function criarListaOcorrencias(itens) {
     const listaElemento = document.createElement("div");
 
     Object.assign(listaElemento.style, {
-        border: "1px solid #e1e1e1",
-        borderRadius: "7px",
+        border: "1px solid #e5e7eb",
+        borderRadius: "8px",
         overflowY: "auto",
         maxHeight: "220px",
-        background: "#ffffff"
+        background: "#ffffff",
+        boxShadow: "inset 0 2px 4px rgba(0,0,0,0.02)"
     });
 
     itens.forEach((item, indice) => {
         const bloco = document.createElement("div");
 
         Object.assign(bloco.style, {
-            padding: "10px 12px",
-            fontSize: "12px",
-            borderBottom:
-                indice < itens.length - 1
-                    ? "1px solid #eeeeee"
-                    : "none"
+            padding: "12px 16px",
+            fontSize: "13px",
+            borderBottom: indice < itens.length - 1 ? "1px solid #f3f4f6" : "none"
         });
 
         const linhaTitulo = document.createElement("div");
-
-        linhaTitulo.textContent =
-            `Linha ${item.linhaExcel} | ` +
-            `${item.destinatario || "Sem e-mail"}`;
+        linhaTitulo.textContent = `Linha ${item.linhaExcel} | ${item.destinatario || "Sem e-mail"}`;
 
         Object.assign(linhaTitulo.style, {
             fontWeight: "600",
-            color: "#323130",
+            color: "#374151",
             wordBreak: "break-word"
         });
 
         const erro = document.createElement("div");
-
         erro.textContent = item.erro || "Erro não informado";
 
         Object.assign(erro.style, {
-            color: "#a4262c",
-            marginTop: "3px",
+            color: "#dc2626",
+            marginTop: "4px",
             wordBreak: "break-word"
         });
 
@@ -691,122 +530,68 @@ function criarListaOcorrencias(itens) {
     return listaElemento;
 }
 
-/**
- * =========================================================
- * POPUP: PLANILHA COM PROBLEMAS
- * =========================================================
- *
- * Exibido quando a pré-validação encontra erros.
- * NÃO possui botão de disparo.
- */
+// =========================================================
+// POPUPS DE FLUXO
+// =========================================================
+
 function mostrarErrosPreValidacao(resultado) {
     return new Promise(resolve => {
         const { overlay, modal } = criarEstruturaModal("660px");
 
+        // Fundo vermelho México
         const header = criarCabecalhoModal(
-    "🇲🇽 Planilha com problemas",
-    "Nenhum e-mail foi enviado. Corrija a planilha e execute novamente.",
-    { fundo: "#CE1126", texto: "#ffffff" }
-);
+            "Planilha com problemas",
+            "Nenhum e-mail foi enviado. Corrija a planilha e execute novamente.",
+            { fundo: "#CE1126", texto: "#ffffff" }
+        );
 
         const conteudo = criarConteudoModal();
 
-        // Indicadores.
         const resumo = document.createElement("div");
-
         Object.assign(resumo.style, {
             display: "grid",
             gridTemplateColumns: "1fr 1fr 1fr",
             gap: "12px",
-            marginBottom: "22px"
+            marginBottom: "24px"
         });
 
-        resumo.appendChild(
-            criarIndicador(
-                "REGISTROS ANALISADOS",
-                resultado.total,
-                "#9B0047"
-            )
-        );
-
-        resumo.appendChild(
-            criarIndicador(
-                "REGISTROS VÁLIDOS",
-                resultado.validos,
-                "#107c10"
-            )
-        );
-
-        resumo.appendChild(
-            criarIndicador(
-                "COM PROBLEMAS",
-                resultado.invalidos,
-                "#d13438"
-            )
-        );
+        resumo.appendChild(criarIndicador("REGISTROS ANALISADOS", resultado.total, "#4b5563"));
+        resumo.appendChild(criarIndicador("REGISTROS VÁLIDOS", resultado.validos, "#006847")); // Verde México
+        resumo.appendChild(criarIndicador("COM PROBLEMAS", resultado.invalidos, "#CE1126")); // Vermelho México
 
         conteudo.appendChild(resumo);
 
-        // Mensagem.
         const mensagem = document.createElement("div");
-
-        mensagem.textContent =
-            "Corrija os problemas abaixo antes de realizar o disparo. " +
-            "O disparo permanece bloqueado enquanto existir qualquer " +
-            "registro inválido.";
-
+        mensagem.textContent = "Corrija os problemas abaixo antes de realizar o disparo. O disparo permanece bloqueado enquanto existir qualquer registro inválido.";
         Object.assign(mensagem.style, {
-            padding: "15px",
-            background: "#fde7e9",
-            border: "1px solid #d13438",
-            borderRadius: "7px",
-            color: "#a4262c",
+            padding: "16px",
+            background: "#fef2f2",
+            border: "1px solid #f87171",
+            borderRadius: "8px",
+            color: "#b91c1c",
             fontSize: "14px",
             lineHeight: "1.5",
-            marginBottom: "20px"
+            marginBottom: "24px"
         });
 
         conteudo.appendChild(mensagem);
 
-        // Título da lista.
         const tituloLista = document.createElement("div");
-
-        tituloLista.textContent =
-            `PROBLEMAS ENCONTRADOS (${resultado.problemas.length})`;
-
+        tituloLista.textContent = `PROBLEMAS ENCONTRADOS (${resultado.problemas.length})`;
         Object.assign(tituloLista.style, {
-            fontSize: "11px",
-            fontWeight: "600",
-            color: "#616161",
-            marginBottom: "8px"
+            fontSize: "12px",
+            fontWeight: "700",
+            color: "#6b7280",
+            marginBottom: "10px"
         });
 
         conteudo.appendChild(tituloLista);
+        conteudo.appendChild(criarListaOcorrencias(resultado.problemas));
 
-        conteudo.appendChild(
-            criarListaOcorrencias(resultado.problemas)
-        );
-
-        // Nota final.
-        const nota = document.createElement("div");
-
-        nota.textContent =
-            "A lista completa também está disponível no console " +
-            "do navegador (console.table).";
-
-        Object.assign(nota.style, {
-            fontSize: "12px",
-            color: "#616161",
-            marginTop: "15px"
-        });
-
-        conteudo.appendChild(nota);
-
-        // Rodapé — SEM botão de disparo.
         const footer = criarRodapeModal();
 
         const botaoFechar = criarBotao("Fechar e corrigir", {
-            background: "#9B0047",
+            background: "#CE1126",
             color: "#ffffff"
         });
 
@@ -825,232 +610,147 @@ function mostrarErrosPreValidacao(resultado) {
     });
 }
 
-/**
- * Cria o popup de pré-visualização.
- *
- * Retorna:
- * true  -> usuário clicou em "Disparar e-mails"
- * false -> usuário cancelou
- */
 function mostrarPreviewDisparo(lista) {
     return new Promise(resolve => {
         const saudacao = obterSaudacao();
-
-        // SOMENTE o primeiro registro é utilizado no preview.
-        // Ele NÃO é removido da lista de disparo.
-        const primeiroEmail = montarEmailDaLinha(
-            lista[0],
-            saudacao
-        );
-
+        const primeiroEmail = montarEmailDaLinha(lista[0], saudacao);
         const { overlay, modal } = criarEstruturaModal("760px");
 
+        // Fundo Verde México
         const header = criarCabecalhoModal(
-    "🇲🇽 Ventas México - Pré-visualização",
-    "Confira o primeiro e-mail antes de iniciar o disparo.",
-    { fundo: "#006847", texto: "#ffffff" }
-);
+            "Ventas México - Pré-visualização",
+            "Confira o primeiro e-mail antes de iniciar o disparo.",
+            { fundo: "#006847", texto: "#ffffff" }
+        );
 
         const conteudo = criarConteudoModal();
 
-        // Aviso sobre quantidade.
         const aviso = document.createElement("div");
-
-        aviso.textContent =
-            `⚠️ Atenção: ao continuar, o envio real de ` +
-            `${lista.length} e-mail(s) será iniciado.`;
-
+        aviso.textContent = `⚠️ Atenção: ao continuar, o envio real de ${lista.length} e-mail(s) será iniciado.`;
         Object.assign(aviso.style, {
-            padding: "13px 15px",
-            background: "#fff4ce",
-            border: "1px solid #e6c74c",
-            borderRadius: "7px",
+            padding: "16px",
+            background: "#fef9c3",
+            border: "1px solid #fde047",
+            borderRadius: "8px",
             fontSize: "14px",
             fontWeight: "600",
+            color: "#854d0e",
             marginBottom: "20px"
         });
-
         conteudo.appendChild(aviso);
 
-        // Confirmação da pré-validação.
         const avisoValidacao = document.createElement("div");
-
-        avisoValidacao.textContent =
-            `✅ Todos os ${lista.length} registro(s) passaram ` +
-            `pela pré-validação da planilha.`;
-
+        avisoValidacao.textContent = `✅ Todos os ${lista.length} registro(s) passaram pela pré-validação da planilha.`;
         Object.assign(avisoValidacao.style, {
-            padding: "12px 15px",
-            background: "#dff6dd",
-            border: "1px solid #107c10",
-            borderRadius: "7px",
-            fontSize: "13px",
-            color: "#0b6a0b",
-            marginBottom: "20px"
+            padding: "16px",
+            background: "#f0fdf4",
+            border: "1px solid #86efac",
+            borderRadius: "8px",
+            fontSize: "14px",
+            color: "#166534",
+            marginBottom: "24px"
         });
-
         conteudo.appendChild(avisoValidacao);
 
-        /**
-         * Cria um campo visual (sempre textContent).
-         */
         function criarCampo(rotulo, valor) {
             const grupo = document.createElement("div");
-
-            grupo.style.marginBottom = "15px";
+            grupo.style.marginBottom = "16px";
 
             const label = document.createElement("div");
-
             label.textContent = rotulo;
-
             Object.assign(label.style, {
-                color: "#616161",
-                fontSize: "11px",
-                fontWeight: "600",
+                color: "#6b7280",
+                fontSize: "12px",
+                fontWeight: "700",
                 textTransform: "uppercase",
                 marginBottom: "4px"
             });
 
             const texto = document.createElement("div");
-
             texto.textContent = valor || "(vazio)";
-
             Object.assign(texto.style, {
-                fontSize: "14px",
-                color: "#242424",
+                fontSize: "15px",
+                color: "#111827",
                 wordBreak: "break-word"
             });
 
             grupo.appendChild(label);
             grupo.appendChild(texto);
-
             return grupo;
         }
 
-        conteudo.appendChild(
-            criarCampo("Para", primeiroEmail.destinatario)
-        );
+        conteudo.appendChild(criarCampo("Para", primeiroEmail.destinatario));
+        conteudo.appendChild(criarCampo("ID", primeiroEmail.id));
+        conteudo.appendChild(criarCampo("Assunto", primeiroEmail.assunto));
 
-        conteudo.appendChild(
-            criarCampo("ID", primeiroEmail.id)
-        );
-
-        conteudo.appendChild(
-            criarCampo("Assunto", primeiroEmail.assunto)
-        );
-
-        // Separador.
         const separador = document.createElement("div");
-
         Object.assign(separador.style, {
             height: "1px",
-            background: "#e1e1e1",
-            margin: "20px 0"
+            background: "#e5e7eb",
+            margin: "24px 0"
         });
-
         conteudo.appendChild(separador);
 
-        // Título do corpo.
         const tituloMensagem = document.createElement("div");
-
         tituloMensagem.textContent = "PRÉ-VISUALIZAÇÃO DA MENSAGEM";
-
         Object.assign(tituloMensagem.style, {
-            color: "#616161",
-            fontSize: "11px",
-            fontWeight: "600",
-            marginBottom: "8px"
+            color: "#6b7280",
+            fontSize: "12px",
+            fontWeight: "700",
+            marginBottom: "10px"
         });
-
         conteudo.appendChild(tituloMensagem);
 
-        /**
-         * Único ponto que usa innerHTML de propósito:
-         * o corpo precisa ser renderizado como HTML
-         * (<br> e formatação) exatamente como será enviado.
-         */
         const corpoPreview = document.createElement("div");
-
         corpoPreview.innerHTML = primeiroEmail.corpo;
-
         Object.assign(corpoPreview.style, {
-            background: "#fafafa",
-            border: "1px solid #d1d1d1",
-            borderRadius: "7px",
-            padding: "18px",
+            background: "#f9fafb",
+            border: "1px solid #e5e7eb",
+            borderRadius: "8px",
+            padding: "20px",
             minHeight: "150px",
             maxHeight: "320px",
             overflowY: "auto",
             fontSize: "14px",
-            lineHeight: "1.5",
-            color: "#242424"
+            lineHeight: "1.6",
+            color: "#1f2937",
+            boxShadow: "inset 0 2px 4px rgba(0,0,0,0.02)"
         });
-
         conteudo.appendChild(corpoPreview);
 
-        // Informação.
-        const informacao = document.createElement("div");
-
-        informacao.textContent =
-            "Esta visualização utiliza somente o primeiro registro da planilha. " +
-            "Nenhum e-mail foi enviado até este momento.";
-
-        Object.assign(informacao.style, {
-            fontSize: "12px",
-            color: "#616161",
-            marginTop: "15px"
-        });
-
-        conteudo.appendChild(informacao);
-
-        // Rodapé.
         const footer = criarRodapeModal();
 
         const botaoCancelar = criarBotao("Cancelar", {
-            border: "1px solid #8a8886",
+            border: "1px solid #d1d5db",
             background: "#ffffff",
-            color: "#323130",
-            fontWeight: "500"
+            color: "#374151",
+            boxShadow: "none"
         });
 
-        const botaoDisparar = criarBotao(
-            `🚀 Disparar ${lista.length} e-mail(s)`,
-            {
-                background: "#107c10",
-                color: "#ffffff"
-            }
-        );
+        const botaoDisparar = criarBotao(`🚀 Disparar ${lista.length} e-mail(s)`, {
+            background: "#006847", // Verde México
+            color: "#ffffff"
+        });
 
-        // Trava contra duplo clique / dupla resolução.
         let decidido = false;
 
         botaoCancelar.onclick = () => {
-            if (decidido) {
-                return;
-            }
-
+            if (decidido) return;
             decidido = true;
-
             overlay.remove();
             resolve(false);
         };
 
         botaoDisparar.onclick = () => {
-            if (decidido) {
-                return;
-            }
-
+            if (decidido) return;
             decidido = true;
-
             botaoDisparar.disabled = true;
             botaoCancelar.disabled = true;
 
             botaoDisparar.textContent = "⏳ Iniciando disparo...";
-            botaoDisparar.style.background = "#666666";
+            botaoDisparar.style.background = "#6b7280";
             botaoDisparar.style.cursor = "default";
 
-            // Pequeno delay apenas para permitir que
-            // a alteração visual do botão seja percebida.
             setTimeout(() => {
                 overlay.remove();
                 resolve(true);
@@ -1068,101 +768,57 @@ function mostrarPreviewDisparo(lista) {
     });
 }
 
-/**
- * Exibe o resultado final do disparo em um popup visual.
- */
 function mostrarResultadoFinal(resultado) {
-    const {
-        total,
-        sucessos,
-        falhas,
-        tempoTotalFormatado
-    } = resultado;
+    const { total, sucessos, falhas, tempoTotalFormatado } = resultado;
 
     return new Promise(resolve => {
         const houveFalhas = falhas.length > 0;
-
-        const { overlay, modal } = criarEstruturaModal("620px");
+        const { overlay, modal } = criarEstruturaModal("640px");
 
         const header = criarCabecalhoModal(
-    houveFalhas
-        ? "🇲🇽⚠️ Disparo México finalizado com ocorrências"
-        : "🇲🇽✅ Disparo México finalizado com sucesso",
-            houveFalhas
-                ? "O processamento terminou, mas alguns registros apresentaram problemas."
-                : "Todos os registros foram processados.",
-            houveFalhas
-                ? { fundo: "#ffb900", texto: "#242424" }
-                : { fundo: "#107c10", texto: "#ffffff" }
+            houveFalhas ? "⚠️ Disparo finalizado com ocorrências" : "✅ Disparo finalizado com sucesso",
+            houveFalhas ? "O processamento terminou, mas alguns registros apresentaram problemas." : "Todos os registros foram processados.",
+            houveFalhas ? { fundo: "#f59e0b", texto: "#ffffff" } : { fundo: "#006847", texto: "#ffffff" }
         );
 
         const conteudo = criarConteudoModal();
 
-        // Indicadores.
         const resumo = document.createElement("div");
-
         Object.assign(resumo.style, {
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
-            gap: "12px",
-            marginBottom: "22px"
+            gap: "16px",
+            marginBottom: "24px"
         });
 
-        resumo.appendChild(
-            criarIndicador("TOTAL PROCESSADO", total, "#9B0047")
-        );
-
-        resumo.appendChild(
-            criarIndicador("ENVIADOS", sucessos.length, "#107c10")
-        );
-
-        resumo.appendChild(
-            criarIndicador(
-                "FALHAS / IGNORADOS",
-                falhas.length,
-                houveFalhas ? "#d13438" : "#107c10"
-            )
-        );
-
-        resumo.appendChild(
-            criarIndicador(
-                "TEMPO TOTAL",
-                tempoTotalFormatado,
-                "#5c2d91"
-            )
-        );
+        resumo.appendChild(criarIndicador("TOTAL PROCESSADO", total, "#4b5563"));
+        resumo.appendChild(criarIndicador("ENVIADOS", sucessos.length, "#006847"));
+        resumo.appendChild(criarIndicador("FALHAS / IGNORADOS", falhas.length, houveFalhas ? "#CE1126" : "#006847"));
+        resumo.appendChild(criarIndicador("TEMPO TOTAL", tempoTotalFormatado, "#8b5cf6"));
 
         conteudo.appendChild(resumo);
 
-        // Mensagem principal.
         const mensagem = document.createElement("div");
 
         if (!houveFalhas) {
-            mensagem.textContent =
-                "🎉 Excelente! Nenhuma falha foi registrada " +
-                "durante o processamento do lote.";
-
+            mensagem.textContent = "🎉 Excelente! Nenhuma falha foi registrada durante o processamento do lote.";
             Object.assign(mensagem.style, {
-                padding: "15px",
-                background: "#dff6dd",
-                border: "1px solid #107c10",
-                borderRadius: "7px",
-                color: "#0b6a0b",
+                padding: "16px",
+                background: "#f0fdf4",
+                border: "1px solid #86efac",
+                borderRadius: "8px",
+                color: "#166534",
                 fontSize: "14px",
                 lineHeight: "1.5"
             });
         } else {
-            mensagem.textContent =
-                `⚠️ Atenção: ${falhas.length} registro(s) apresentaram ` +
-                "falha durante o envio. Os detalhes também estão " +
-                "disponíveis no console do navegador.";
-
+            mensagem.textContent = `⚠️ Atenção: ${falhas.length} registro(s) apresentaram falha durante o envio. Detalhes disponíveis abaixo.`;
             Object.assign(mensagem.style, {
-                padding: "15px",
-                background: "#fff4ce",
-                border: "1px solid #e6c74c",
-                borderRadius: "7px",
-                color: "#5c4b00",
+                padding: "16px",
+                background: "#fef9c3",
+                border: "1px solid #fde047",
+                borderRadius: "8px",
+                color: "#854d0e",
                 fontSize: "14px",
                 lineHeight: "1.5"
             });
@@ -1170,30 +826,25 @@ function mostrarResultadoFinal(resultado) {
 
         conteudo.appendChild(mensagem);
 
-        // Lista de falhas.
         if (houveFalhas) {
             const tituloFalhas = document.createElement("div");
-
             tituloFalhas.textContent = "REGISTROS COM PROBLEMAS";
-
             Object.assign(tituloFalhas.style, {
-                fontSize: "11px",
-                fontWeight: "600",
-                color: "#616161",
-                marginTop: "20px",
-                marginBottom: "8px"
+                fontSize: "12px",
+                fontWeight: "700",
+                color: "#6b7280",
+                marginTop: "24px",
+                marginBottom: "10px"
             });
 
             conteudo.appendChild(tituloFalhas);
-
             conteudo.appendChild(criarListaOcorrencias(falhas));
         }
 
-        // Rodapé.
         const footer = criarRodapeModal();
 
         const botaoFechar = criarBotao("Fechar", {
-            background: "#9B0047",
+            background: houveFalhas ? "#f59e0b" : "#006847",
             color: "#ffffff"
         });
 
@@ -1212,25 +863,18 @@ function mostrarResultadoFinal(resultado) {
     });
 }
 
-/**
- * Cria e envia um e-mail pelo Dynamics 365.
- *
- * Lógica original preservada.
- */
-async function enviarEmailDinamico(
-    destinatario,
-    assunto,
-    corpo
-) {
+// =========================================================
+// INTEGRAÇÃO DE ENVIO E EXCEL MANTIDA INTACTA
+// =========================================================
+
+async function enviarEmailDinamico(destinatario, assunto, corpo) {
     try {
         const emailData = {
             subject: assunto,
             description: corpo,
-
             email_activity_parties: [
                 {
-                    "partyid_queue@odata.bind":
-                        `/queues(${ID_QUEUE})`,
+                    "partyid_queue@odata.bind": `/queues(${ID_QUEUE})`,
                     participationtypemask: 1
                 },
                 {
@@ -1240,31 +884,24 @@ async function enviarEmailDinamico(
             ]
         };
 
-        const novoEmail = await Xrm.WebApi.createRecord(
-            "email",
-            emailData
-        );
+        const novoEmail = await Xrm.WebApi.createRecord("email", emailData);
 
         const request = {
             entity: {
                 entityType: "email",
                 id: novoEmail.id
             },
-
             IssueSend: true,
-
             getMetadata: function () {
                 return {
                     boundParameter: "entity",
                     operationType: 0,
                     operationName: "SendEmail",
-
                     parameterTypes: {
                         entity: {
                             typeName: "mscrm.email",
                             structuralProperty: 5
                         },
-
                         IssueSend: {
                             typeName: "Edm.Boolean",
                             structuralProperty: 1
@@ -1276,35 +913,18 @@ async function enviarEmailDinamico(
 
         await Xrm.WebApi.online.execute(request);
 
-        return {
-            sucesso: true,
-            emailId: novoEmail.id
-        };
+        return { sucesso: true, emailId: novoEmail.id };
 
     } catch (erro) {
-        return {
-            sucesso: false,
-            erro: obterMensagemErro(erro)
-        };
+        return { sucesso: false, erro: obterMensagemErro(erro) };
     }
 }
 
-/**
- * Envia todos os e-mails da planilha.
- *
- * Neste ponto a planilha já passou pela pré-validação,
- * mas as checagens obrigatórias são mantidas como
- * rede de segurança.
- *
- * Sem retry automático e sem paralelismo.
- */
 async function dispararLote(lista) {
     const total = lista.length;
     const saudacao = obterSaudacao();
-
     const falhas = [];
     const sucessos = [];
-
     const inicio = performance.now();
 
     console.log("========================================");
@@ -1316,131 +936,39 @@ async function dispararLote(lista) {
 
     for (let i = 0; i < total; i++) {
         const linha = lista[i];
-
         const numeroAtual = i + 1;
         const numeroLinhaExcel = i + 2;
 
-        /**
-         * Utiliza exatamente a mesma função
-         * utilizada pela pré-validação e pelo popup.
-         */
         const email = montarEmailDaLinha(linha, saudacao);
+        const { id, destinatario, tituloBase, corpoBase, chave, assunto, corpo, variaveisNaoEncontradas } = email;
 
-        const {
-            id,
-            destinatario,
-            tituloBase,
-            corpoBase,
-            chave,
-            assunto,
-            corpo,
-            variaveisNaoEncontradas
-        } = email;
-
-        // Rede de segurança (não deveria ocorrer após a pré-validação).
         const camposAusentes = [];
-
-        if (!destinatario) {
-            camposAusentes.push("EMAIL");
-        }
-
-        if (!tituloBase) {
-            camposAusentes.push("TITULO DO EMAIL");
-        }
-
-        if (!id) {
-            camposAusentes.push("ID");
-        }
-
-        if (!corpoBase) {
-            camposAusentes.push("TEXTO");
-        }
+        if (!destinatario) camposAusentes.push("EMAIL");
+        if (!tituloBase) camposAusentes.push("TITULO DO EMAIL");
+        if (!id) camposAusentes.push("ID");
+        if (!corpoBase) camposAusentes.push("TEXTO");
 
         const motivosBloqueio = [];
-
-        if (camposAusentes.length > 0) {
-            motivosBloqueio.push(
-                "Campos obrigatórios ausentes: " +
-                camposAusentes.join(", ")
-            );
-        }
-
-        if (destinatario && !emailPareceValido(destinatario)) {
-            motivosBloqueio.push("EMAIL inválido");
-        }
-
-        if (variaveisNaoEncontradas.length > 0) {
-            motivosBloqueio.push(
-                "Variáveis não encontradas: " +
-                variaveisNaoEncontradas.join(", ")
-            );
-        }
+        if (camposAusentes.length > 0) motivosBloqueio.push("Campos obrigatórios ausentes: " + camposAusentes.join(", "));
+        if (destinatario && !emailPareceValido(destinatario)) motivosBloqueio.push("EMAIL inválido");
+        if (variaveisNaoEncontradas.length > 0) motivosBloqueio.push("Variáveis não encontradas: " + variaveisNaoEncontradas.join(", "));
 
         if (motivosBloqueio.length > 0) {
             const mensagemErro = motivosBloqueio.join(" | ");
-
-            console.warn(
-                `⚠️ [${numeroAtual}/${total}] ` +
-                `Linha ${numeroLinhaExcel} ignorada: ` +
-                mensagemErro
-            );
-
-            falhas.push({
-                numero: numeroAtual,
-                linhaExcel: numeroLinhaExcel,
-                destinatario,
-                id,
-                chave,
-                assunto,
-                erro: mensagemErro
-            });
-
+            console.warn(`⚠️ [${numeroAtual}/${total}] Linha ${numeroLinhaExcel} ignorada: ${mensagemErro}`);
+            falhas.push({ numero: numeroAtual, linhaExcel: numeroLinhaExcel, destinatario, id, chave, assunto, erro: mensagemErro });
             continue;
         }
 
-        console.log(
-            `⏳ [${numeroAtual}/${total}] ` +
-            `Enviando para ${destinatario}...`
-        );
-
-        const resultadoEnvio = await enviarEmailDinamico(
-            destinatario,
-            assunto,
-            corpo
-        );
+        console.log(`⏳ [${numeroAtual}/${total}] Enviando para ${destinatario}...`);
+        const resultadoEnvio = await enviarEmailDinamico(destinatario, assunto, corpo);
 
         if (resultadoEnvio.sucesso) {
-            sucessos.push({
-                numero: numeroAtual,
-                linhaExcel: numeroLinhaExcel,
-                destinatario,
-                id,
-                chave,
-                emailId: resultadoEnvio.emailId
-            });
-
-            console.log(
-                `✅ [${numeroAtual}/${total}] ` +
-                `Enviado para: ${destinatario} | ` +
-                `ID: ${id}`
-            );
-
+            sucessos.push({ numero: numeroAtual, linhaExcel: numeroLinhaExcel, destinatario, id, chave, emailId: resultadoEnvio.emailId });
+            console.log(`✅ [${numeroAtual}/${total}] Enviado para: ${destinatario} | ID: ${id}`);
         } else {
-            falhas.push({
-                numero: numeroAtual,
-                linhaExcel: numeroLinhaExcel,
-                destinatario,
-                id,
-                chave,
-                assunto,
-                erro: resultadoEnvio.erro
-            });
-
-            console.error(
-                `❌ [${numeroAtual}/${total}] ` +
-                `Falha para: ${destinatario} | ` +
-                `${resultadoEnvio.erro}`
-            );
+            falhas.push({ numero: numeroAtual, linhaExcel: numeroLinhaExcel, destinatario, id, chave, assunto, erro: resultadoEnvio.erro });
+            console.error(`❌ [${numeroAtual}/${total}] Falha para: ${destinatario} | ${resultadoEnvio.erro}`);
         }
 
         if (i < total - 1) {
@@ -1451,38 +979,6 @@ async function dispararLote(lista) {
     const fim = performance.now();
     const tempoTotal = fim - inicio;
 
-    console.log("");
-    console.log("========================================");
-    console.log("🏁 DISPARO FINALIZADO");
-    console.log("========================================");
-    console.log(`📊 Total de registros: ${total}`);
-
-    console.log(
-        `✅ Enviados com sucesso: ${sucessos.length}/${total}`
-    );
-
-    console.log(
-        `❌ Falhas ou ignorados: ${falhas.length}/${total}`
-    );
-
-    console.log(
-        `⏱️ Tempo total: ${formatarTempo(tempoTotal)}`
-    );
-
-    if (falhas.length > 0) {
-        console.log("");
-
-        console.warn(
-            "📋 E-MAILS QUE FALHARAM OU FORAM IGNORADOS:"
-        );
-
-        console.table(falhas);
-
-    } else {
-        console.log("");
-        console.log("🎉 Nenhum e-mail apresentou falha.");
-    }
-
     return {
         total,
         sucessos,
@@ -1492,82 +988,40 @@ async function dispararLote(lista) {
     };
 }
 
-/**
- * Valida se os cabeçalhos obrigatórios existem na planilha.
- */
 function validarCabecalhos(lista) {
     if (!lista || lista.length === 0) {
-        return {
-            valido: false,
-            ausentes: [],
-            mensagem: "A planilha não possui registros."
-        };
+        return { valido: false, ausentes: [], mensagem: "A planilha não possui registros." };
     }
 
     const primeiraLinha = lista[0];
     const cabecalhosEncontrados = Object.keys(primeiraLinha);
+    const camposObrigatorios = ["ID", "EMAIL", "TITULO DO EMAIL", "TEXTO"];
 
-    const camposObrigatorios = [
-        "ID",
-        "EMAIL",
-        "TITULO DO EMAIL",
-        "TEXTO"
-    ];
-
-    const camposAusentes =
-        camposObrigatorios.filter(campo => {
-            const existe =
-                cabecalhosEncontrados.some(cabecalho => {
-                    return (
-                        normalizarCabecalho(cabecalho) ===
-                        normalizarCabecalho(campo)
-                    );
-                });
-
-            return !existe;
-        });
+    const camposAusentes = camposObrigatorios.filter(campo => {
+        return !cabecalhosEncontrados.some(cabecalho => normalizarCabecalho(cabecalho) === normalizarCabecalho(campo));
+    });
 
     if (camposAusentes.length > 0) {
-        return {
-            valido: false,
-            ausentes: camposAusentes,
-
-            mensagem:
-                `Cabeçalhos obrigatórios não encontrados: ` +
-                camposAusentes.join(", ")
-        };
+        return { valido: false, ausentes: camposAusentes, mensagem: `Cabeçalhos obrigatórios não encontrados: ` + camposAusentes.join(", ") };
     }
 
-    return {
-        valido: true,
-        ausentes: [],
-        mensagem: "Cabeçalhos válidos."
-    };
+    return { valido: true, ausentes: [], mensagem: "Cabeçalhos válidos." };
 }
 
-/**
- * Carrega a biblioteca XLSX e abre
- * o seletor de arquivos.
- */
 function carregarExcelLocal() {
     if (typeof XLSX !== "undefined") {
         abrirSeletorExcel();
         return;
     }
 
-    const scriptExistente = document.querySelector(
-        'script[src*="xlsx.full.min.js"]'
-    );
-
+    const scriptExistente = document.querySelector('script[src*="xlsx.full.min.js"]');
     if (scriptExistente) {
         abrirSeletorExcel();
         return;
     }
 
     const script = document.createElement("script");
-
-    script.src =
-        "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
 
     script.onload = () => {
         console.log("✅ Biblioteca XLSX carregada.");
@@ -1575,209 +1029,78 @@ function carregarExcelLocal() {
     };
 
     script.onerror = () => {
-        console.error(
-            "❌ Não foi possível carregar " +
-            "a biblioteca XLSX."
-        );
+        console.error("❌ Não foi possível carregar a biblioteca XLSX.");
     };
 
     document.head.appendChild(script);
 }
 
-/**
- * Abre o seletor de arquivo Excel.
- */
 function abrirSeletorExcel() {
     const input = document.createElement("input");
-
     input.type = "file";
     input.accept = ".xlsx,.xls";
     input.style.display = "none";
 
     input.addEventListener("change", evento => {
         const arquivo = evento.target.files?.[0];
-
-        if (!arquivo) {
-            console.warn("⚠️ Nenhum arquivo selecionado.");
-            return;
-        }
-
+        if (!arquivo) return;
         lerArquivoExcel(arquivo);
     });
 
     document.body.appendChild(input);
     input.click();
-
-    setTimeout(() => {
-        input.remove();
-    }, 1000);
+    setTimeout(() => { input.remove(); }, 1000);
 }
 
-/**
- * Lê e processa o arquivo Excel.
- */
 function lerArquivoExcel(arquivo) {
     const leitor = new FileReader();
-
-    console.log(`📥 Lendo planilha: ${arquivo.name}`);
 
     leitor.onload = async evento => {
         try {
             const data = new Uint8Array(evento.target.result);
+            const workbook = XLSX.read(data, { type: "array" });
 
-            const workbook = XLSX.read(data, {
-                type: "array"
-            });
-
-            if (!workbook.SheetNames.length) {
-                throw new Error(
-                    "Nenhuma aba foi encontrada na planilha."
-                );
-            }
+            if (!workbook.SheetNames.length) throw new Error("Nenhuma aba foi encontrada na planilha.");
 
             const primeiraAba = workbook.SheetNames[0];
             const planilha = workbook.Sheets[primeiraAba];
+            const listaDeEmails = XLSX.utils.sheet_to_json(planilha, { defval: "", raw: false });
 
-            const listaDeEmails = XLSX.utils.sheet_to_json(
-                planilha,
-                {
-                    defval: "",
-                    raw: false
-                }
-            );
+            if (!listaDeEmails.length) throw new Error("A primeira aba da planilha não possui registros.");
 
-            if (!listaDeEmails.length) {
-                throw new Error(
-                    "A primeira aba da planilha " +
-                    "não possui registros."
-                );
-            }
-
-            console.log(
-                `✅ Excel lido com sucesso! ` +
-                `${listaDeEmails.length} registros encontrados.`
-            );
-
-            console.log(
-                "📌 Cabeçalhos encontrados:",
-                Object.keys(listaDeEmails[0])
-            );
-
-            /**
-             * =========================================
-             * ETAPA 1: VALIDAÇÃO DE CABEÇALHOS
-             * =========================================
-             */
             const validacao = validarCabecalhos(listaDeEmails);
 
             if (!validacao.valido) {
-                console.error(`❌ ${validacao.mensagem}`);
-
                 await mostrarErrosPreValidacao({
                     total: listaDeEmails.length,
                     validos: 0,
                     invalidos: listaDeEmails.length,
-                    problemas: [
-                        {
-                            linhaExcel: 1,
-                            destinatario: "Cabeçalho da planilha",
-                            erro: validacao.mensagem
-                        }
-                    ]
+                    problemas: [{ linhaExcel: 1, destinatario: "Cabeçalho da planilha", erro: validacao.mensagem }]
                 });
-
                 return;
             }
-
-            console.log("✅ Cabeçalhos obrigatórios validados.");
-
-            /**
-             * =========================================
-             * ETAPA 2: PRÉ-VALIDAÇÃO DE TODAS AS LINHAS
-             * =========================================
-             *
-             * NENHUM e-mail é enviado nesta etapa.
-             */
-            console.log("");
-            console.log("🔎 Pré-validando todos os registros...");
 
             const preValidacao = preValidarPlanilha(listaDeEmails);
 
-            console.log(
-                `📊 Analisados: ${preValidacao.total} | ` +
-                `Válidos: ${preValidacao.validos} | ` +
-                `Com problemas: ${preValidacao.invalidos}`
-            );
-
             if (!preValidacao.valido) {
-                console.error("");
-                console.error(
-                    "❌ PLANILHA COM PROBLEMAS — DISPARO BLOQUEADO."
-                );
-                console.error("📭 Nenhum e-mail foi enviado.");
-                console.table(preValidacao.problemas);
-
                 await mostrarErrosPreValidacao(preValidacao);
-
                 return;
             }
 
-            console.log("✅ Todos os registros são válidos.");
+            const usuarioConfirmou = await mostrarPreviewDisparo(listaDeEmails);
 
-            /**
-             * =========================================
-             * ETAPA 3: PREVIEW DO PRIMEIRO EMAIL
-             * =========================================
-             *
-             * O primeiro registro NÃO é removido da lista.
-             */
-            const usuarioConfirmou = await mostrarPreviewDisparo(
-                listaDeEmails
-            );
+            if (!usuarioConfirmou) return;
 
-            if (!usuarioConfirmou) {
-                console.log("");
-                console.log("🛑 Disparo cancelado pelo usuário.");
-                console.log("📭 Nenhum e-mail foi enviado.");
-                return;
-            }
-
-            console.log("");
-            console.log("✅ Disparo confirmado pelo usuário.");
-
-            /**
-             * =========================================
-             * ETAPA 4: ENVIO REAL (sequencial, sem retry)
-             * =========================================
-             */
             const resultado = await dispararLote(listaDeEmails);
-
-            /**
-             * =========================================
-             * ETAPA 5: POPUP DE FINALIZAÇÃO
-             * =========================================
-             */
             await mostrarResultadoFinal(resultado);
 
         } catch (erro) {
-            console.error(
-                "❌ Falha ao processar o Excel:",
-                obterMensagemErro(erro)
-            );
+            console.error("❌ Falha ao processar o Excel:", obterMensagemErro(erro));
         }
     };
 
-    leitor.onerror = () => {
-        console.error(
-            "❌ Não foi possível ler o arquivo Excel."
-        );
-    };
-
+    leitor.onerror = () => console.error("❌ Não foi possível ler o arquivo Excel.");
     leitor.readAsArrayBuffer(arquivo);
 }
-
-// =============================================
-// INÍCIO
-// =============================================
 
 carregarExcelLocal();
