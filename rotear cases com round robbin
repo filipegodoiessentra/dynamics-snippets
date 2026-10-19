@@ -10,15 +10,16 @@
   const CRISTINA = { nome: "Cristina Alves", id: "2ad29448-518c-ef11-ac20-6045bddd9c93" };
   const JULIANA = { nome: "Juliana Martins", id: "3a9d0168-4a04-f011-bae3-000d3ab0fedf" };
   const LILIAN = { nome: "Lilian Lopes", id: "d5ca6b9c-6350-f011-877b-000d3adf9cf8" };
+  const DANILO = { nome: "Danilo Ageje",  id: "e085d30c-16bb-f111-aaaf-70a8a580a75b" };
+  const NICOLE = { nome: "Nicole Chiva", id: "266b2bd9-25bc-f111-aaaf-e4fb1ef6e913" };
 
   const FILA_ATENDIMENTO = [LILIAN];
-  const FILA_343_344 = [USUARIOS["338"], USUARIOS["340"]];
   const FILA_346_TEMP = [USUARIOS["338"], USUARIOS["340"]];
   const REGEX_COTACAO = /cotac|cotar|orcament|amostra|sample/i;
   const REGEX_ATENDIMENTO = /fup|follow|release|pedido|purchase|posicao de entrega|posição de entrega|nota fiscal|ordem de compra|\bnf\b|boleto/i;
   const REGEX_LUCIMARA = /\b(weg|mwm|elgin)\b/i;
   const REGEX_JOST = /\bjost\b/i;
-  const USUARIOS_MANUAIS = [FILIPE, USUARIOS["335"], USUARIOS["337"], USUARIOS["338"], USUARIOS["340"], USUARIOS["346"], CRISTINA, LILIAN, JULIANA];
+  const USUARIOS_MANUAIS = [FILIPE, USUARIOS["335"], USUARIOS["337"], USUARIOS["338"], USUARIOS["340"], USUARIOS["346"], CRISTINA, LILIAN, JULIANA, DANILO, NICOLE];
 
   const resultados = [];
   const cacheEmails = new Map();
@@ -153,7 +154,11 @@
         } else if (REGEX_ATENDIMENTO.test(tituloN)) {
           usuario = proximo("rr_atendimento", FILA_ATENDIMENTO); regra = "Atendimento Comercial";
           detalheRegra = usuario ? "Título identificado como atendimento comercial." : "Fila de Atendimento Comercial sem usuários disponíveis.";
-      } else if (["338", "340", "346"].includes(codigo)) {
+             } else if (codigo === "336") {
+          usuario = proximo("rr_atendimento", FILA_ATENDIMENTO); regra = "Território 336 - Atendimento Comercial";
+          detalheRegra = usuario ? "Direcionado para o rodízio de Atendimento Comercial." : "Fila de Atendimento Comercial sem usuários disponíveis.";
+ 
+} else if (["338", "340", "343", "344", "346"].includes(codigo)) {
 
   if (REGEX_COTACAO.test(tituloN)) {
 
@@ -161,6 +166,17 @@
       usuario = proximo("rr_346_temp", FILA_346_TEMP);
       regra = "Cotação - Território 346 (cobertura temporária)";
       detalheRegra = "Cristiana ausente. Rodízio entre Matheus e Pablo.";
+
+    } else if (codigo === "343") {
+      usuario = DANILO;
+      regra = "Cotação - Território 343";
+      detalheRegra = "Título identificado como cotação.";
+
+    } else if (codigo === "344") {
+      usuario = NICOLE;
+      regra = "Cotação - Território 344";
+      detalheRegra = "Título identificado como cotação.";
+
     } else {
       usuario = USUARIOS[codigo];
       regra = `Cotação - Território ${codigo}`;
@@ -171,14 +187,7 @@
     regra = `Território ${codigo}`;
     detalheRegra = "Território identificado, porém o título não foi classificado como cotação.";
   }
-        } else if (codigo === "336") {
-          usuario = proximo("rr_atendimento", FILA_ATENDIMENTO); regra = "Território 336 - Atendimento Comercial";
-          detalheRegra = usuario ? "Direcionado para o rodízio de Atendimento Comercial." : "Fila de Atendimento Comercial sem usuários disponíveis.";
-        } else if (["343", "344"].includes(codigo)) {
-          usuario = proximo("rr_cotacao_343_344", FILA_343_344); regra = `Rodízio território ${codigo}`;
-          detalheRegra = usuario ? "Direcionado para o rodízio de cotação 343/344." : "Fila 343/344 sem usuários disponíveis.";
-        }
-
+}
         if (!usuario) {
           naoRoteados++;
           if (!regra) { regra = "Nenhuma regra encontrada"; detalheRegra = codigo ? `O território ${codigo} não possui regra aplicável para este título.` : "Não foi possível identificar uma regra de roteamento."; }
