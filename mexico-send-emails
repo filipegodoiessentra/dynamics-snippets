@@ -506,8 +506,14 @@ function criarCabecalhoModal(textoTitulo, textoSubtitulo, cores) {
     });
 
     const titulo = document.createElement("div");
+titulo.style.display = "flex";
+titulo.style.alignItems = "center";
+titulo.style.gap = "10px";
 
-    titulo.textContent = textoTitulo;
+    titulo.innerHTML = `
+    <span style="font-size:30px;">🇲🇽</span>
+    <span>${textoTitulo}</span>
+`;
 
     Object.assign(titulo.style, {
         fontSize: "21px",
@@ -698,10 +704,10 @@ function mostrarErrosPreValidacao(resultado) {
         const { overlay, modal } = criarEstruturaModal("660px");
 
         const header = criarCabecalhoModal(
-            "❌ Planilha com problemas",
-            "Nenhum e-mail foi enviado. Corrija a planilha e execute novamente.",
-            { fundo: "#d13438", texto: "#ffffff" }
-        );
+    "🇲🇽 Planilha com problemas",
+    "Nenhum e-mail foi enviado. Corrija a planilha e execute novamente.",
+    { fundo: "#CE1126", texto: "#ffffff" }
+);
 
         const conteudo = criarConteudoModal();
 
@@ -840,10 +846,10 @@ function mostrarPreviewDisparo(lista) {
         const { overlay, modal } = criarEstruturaModal("760px");
 
         const header = criarCabecalhoModal(
-            "📧 Pré-visualização do disparo",
-            "Confira o primeiro e-mail da planilha antes de iniciar o lote.",
-            { fundo: "#9B0047", texto: "#ffffff" }
-        );
+    "🇲🇽 Ventas México - Pré-visualização",
+    "Confira o primeiro e-mail antes de iniciar o disparo.",
+    { fundo: "#006847", texto: "#ffffff" }
+);
 
         const conteudo = criarConteudoModal();
 
@@ -1079,9 +1085,9 @@ function mostrarResultadoFinal(resultado) {
         const { overlay, modal } = criarEstruturaModal("620px");
 
         const header = criarCabecalhoModal(
-            houveFalhas
-                ? "⚠️ Disparo finalizado com ocorrências"
-                : "✅ Disparo finalizado com sucesso",
+    houveFalhas
+        ? "🇲🇽⚠️ Disparo México finalizado com ocorrências"
+        : "🇲🇽✅ Disparo México finalizado com sucesso",
             houveFalhas
                 ? "O processamento terminou, mas alguns registros apresentaram problemas."
                 : "Todos os registros foram processados.",
