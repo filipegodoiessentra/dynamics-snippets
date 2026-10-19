@@ -12,20 +12,29 @@
         // CONFIGURAÇÕES
         // =========================================================
 
-        const VENDEDORES = [
+      const VENDEDORES = [
 
-            {
-                nome: "Pablo Silva",
-                id: "67f1a84e-7471-f011-b4cc-000d3adb1307"
-            },
+    {
+        nome: "Pablo Silva",
+        id: "67f1a84e-7471-f011-b4cc-000d3adb1307"
+    },
 
-            {
-                nome: "Matheus Silva",
-                id: "d46857cf-606e-f011-b4cc-6045bde0e1bb"
-            }
+    {
+        nome: "Matheus Silva",
+        id: "d46857cf-606e-f011-b4cc-6045bde0e1bb"
+    },
 
-        ];
+    {
+        nome: "Danilo Ageje",
+        id: "e085d30c-16bb-f111-aaaf-70a8a580a75b"
+    },
 
+    {
+        nome: "Nicole Chiva",
+        id: "266b2bd9-25bc-f111-aaaf-e4fb1ef6e913"
+    }
+
+];
 
         const QUEUE_ID =
             "{1DC95BFF-6E36-EC11-8C64-000D3ABA5426}";
