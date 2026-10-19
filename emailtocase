@@ -13,25 +13,34 @@
         // CONFIGURAÇÕES
         // =========================================================
 
-        const VENDEDORES = [
+       const VENDEDORES = [
 
-            {
-                nome: "Cristiana Roseto",
-                id: "df619db6-3a77-eb11-a812-000d3adb5d0d"
-            },
+    {
+        nome: "Cristiana Roseto",
+        id: "df619db6-3a77-eb11-a812-000d3adb5d0d"
+    },
 
-            {
-                nome: "Pablo Silva",
-                id: "67f1a84e-7471-f011-b4cc-000d3adb1307"
-            },
+    {
+        nome: "Pablo Silva",
+        id: "67f1a84e-7471-f011-b4cc-000d3adb1307"
+    },
 
-            {
-                nome: "Matheus Silva",
-                id: "d46857cf-606e-f011-b4cc-6045bde0e1bb"
-            }
+    {
+        nome: "Matheus Silva",
+        id: "d46857cf-606e-f011-b4cc-6045bde0e1bb"
+    },
 
-        ];
+    {
+        nome: "Danilo Ageje",
+        id: "e085d30c-16bb-f111-aaaf-70a8a580a75b"
+    },
 
+    {
+        nome: "Nicole Chiva",
+        id: "266b2bd9-25bc-f111-aaaf-e4fb1ef6e913"
+    }
+
+];
 
         const ACCOUNT_SEM_REMETENTE =
             "F52D46D1-2392-F011-B4CC-002248A2DAEF";
