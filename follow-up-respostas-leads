@@ -27,6 +27,8 @@
         #fg-left { width: 380px; background: #f9fafb; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; padding: 15px; box-sizing: border-box; }
         .fg-left-title { font-size: 16px; font-weight: 600; margin-bottom: 10px; color: #111827; }
         #fg-guids-input { width: 100%; height: 80px; resize: none; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px; font-size: 12px; box-sizing: border-box; margin-bottom: 10px; flex-shrink: 0; }
+        
+        .fg-btn-group { display: flex; gap: 8px; width: 100%; margin-bottom: 8px; }
         .fg-btn { padding: 8px 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; color: white; display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex-shrink: 0; transition: 0.2s; }
         .fg-btn:hover { opacity: 0.9; }
         .fg-btn-primary { background: #106ebe; }
@@ -35,8 +37,8 @@
         .fg-btn-warning { background: #ff8c00; }
         .fg-btn-neutral { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
         
-        /* Dashboard (NOVO) */
-        .fg-dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 15px; display: none; }
+        /* Dashboard */
+        .fg-dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 15px; display: none; margin-bottom: 8px; }
         .fg-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .fg-card-title { font-size: 10px; color: #6b7280; text-transform: uppercase; margin-bottom: 5px; font-weight: 600; }
         .fg-card-value { font-size: 16px; font-weight: 700; color: #111827; display: flex; align-items: center; justify-content: center; gap: 5px; }
@@ -96,12 +98,23 @@
             <button id="fg-btn-fechar" title="Fechar">✖</button>
             <div id="fg-left">
                 <div class="fg-left-title">Follow-Up Center</div>
-                <textarea id="fg-guids-input" placeholder="Cole os GUIDs dos Emails aqui (um por linha)..."></textarea>
-                <button id="fg-btn-carregar" class="fg-btn fg-btn-primary" style="width: 100%;">CARREGAR GUIDS</button>
                 
-                <!-- NOVO: Dashboard e Botão Exportar -->
+                <textarea id="fg-guids-input" placeholder="Cole os GUIDs dos Emails aqui (um por linha)..."></textarea>
+                
+                <div class="fg-btn-group" id="fg-group-load">
+                    <button id="fg-btn-carregar" class="fg-btn fg-btn-primary" style="flex: 1;">CARREGAR GUIDS</button>
+                    <button id="fg-btn-import-json" class="fg-btn fg-btn-neutral" title="Importar backup JSON">📁 IMPORTAR</button>
+                    <input type="file" id="fg-file-json" accept=".json" style="display:none;" />
+                </div>
+
+                <button id="fg-btn-show-load" class="fg-btn fg-btn-neutral" style="width: 100%; display: none;">+ INSERIR MAIS GUIDS OU IMPORTAR</button>
+
                 <div id="fg-dashboard" class="fg-dashboard"></div>
-                <button id="fg-btn-exportar" class="fg-btn fg-btn-success" style="width: 100%; margin-top: 8px; display: none;">📥 BAIXAR RELATÓRIO</button>
+                
+                <div class="fg-btn-group" id="fg-group-export" style="display: none;">
+                    <button id="fg-btn-export-csv" class="fg-btn fg-btn-success" style="flex: 1;">📥 CSV</button>
+                    <button id="fg-btn-export-json" class="fg-btn fg-btn-neutral" style="flex: 1;">💾 JSON</button>
+                </div>
 
                 <input type="text" id="fg-busca" placeholder="Buscar ticket, título ou status..." autocomplete="off"/>
                 <div id="fg-list">
@@ -115,24 +128,46 @@
     `;
     document.body.appendChild(overlay);
 
-    // NOVO: Função para Atualizar os Cards (Métricas)
+    // Função de transição de tela
+    function transicaoParaTrabalho() {
+        document.getElementById("fg-guids-input").style.display = "none";
+        document.getElementById("fg-group-load").style.display = "none";
+        document.getElementById("fg-btn-show-load").style.display = "block";
+        document.getElementById("fg-busca").value = "";
+        termoBusca = "";
+        
+        if (resultados.length > 0) {
+            selecionadoIndex = 0;
+            renderLista();
+            renderDetalhe();
+        } else {
+            renderLista();
+        }
+    }
+
+    // Botão para voltar a inserir mais guids
+    document.getElementById("fg-btn-show-load").onclick = () => {
+        document.getElementById("fg-guids-input").style.display = "block";
+        document.getElementById("fg-group-load").style.display = "flex";
+        document.getElementById("fg-btn-show-load").style.display = "none";
+    };
+
+    // Atualiza os Cards do Dashboard
     function atualizarResumo() {
         const divDash = document.getElementById("fg-dashboard");
-        const btnExportar = document.getElementById("fg-btn-exportar");
+        const groupExport = document.getElementById("fg-group-export");
         
         if (!resultados.length) {
             divDash.style.display = "none";
-            btnExportar.style.display = "none";
+            groupExport.style.display = "none";
             return;
         }
 
         divDash.style.display = "grid";
-        btnExportar.style.display = "flex";
+        groupExport.style.display = "flex";
 
         let total = resultados.length;
-        let comResposta = 0;
-        let semResposta = 0;
-        let fup = 0;
+        let comResposta = 0, semResposta = 0, fup = 0;
 
         resultados.forEach(r => {
             const st = r.status.toUpperCase();
@@ -164,38 +199,61 @@
         `;
     }
 
-    // NOVO: Função para exportar os dados do Follow Up para Excel
-    document.getElementById("fg-btn-exportar").onclick = function() {
+    // Lógica: EXPORTAR CSV
+    document.getElementById("fg-btn-export-csv").onclick = function() {
         if (!resultados.length) return alert("Nenhum dado para exportar.");
-        
         let csv = "Email ID Original;Case ID;Ticket;Titulo do Case;Assunto Original;Status Atual\n";
-        
         resultados.forEach(r => {
-            // Limpa quebras de linha e aspas para não quebrar o Excel
             const limpa = s => `"${String(s || "").replace(/"/g, '""').replace(/\n/g, ' ')}"`;
-            csv += [
-                limpa(r.emailId),
-                limpa(r.caseId),
-                limpa(r.ticket),
-                limpa(r.titulo),
-                limpa(r.assunto),
-                limpa(r.status)
-            ].join(";") + "\n";
+            csv += [limpa(r.emailId), limpa(r.caseId), limpa(r.ticket), limpa(r.titulo), limpa(r.assunto), limpa(r.status)].join(";") + "\n";
         });
-
-        // O \uFEFF força o Excel a ler o arquivo em UTF-8 corretamente (mantém acentos)
         const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `FollowUp_Relatorio_${new Date().toISOString().slice(0, 10)}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        link.href = URL.createObjectURL(blob);
+        link.download = `FollowUp_Relatorio_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
     };
 
-    // 5. Lógica de Carregamento
+    // Lógica: EXPORTAR JSON (Backup do Progresso)
+    document.getElementById("fg-btn-export-json").onclick = function() {
+        if (!resultados.length) return alert("Nenhum dado para exportar.");
+        const jsonStr = JSON.stringify(resultados, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `FollowUp_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    };
+
+    // Lógica: IMPORTAR JSON (Retomar Progresso)
+    const btnImportarJson = document.getElementById("fg-btn-import-json");
+    const inputFileJson = document.getElementById("fg-file-json");
+
+    btnImportarJson.onclick = () => inputFileJson.click();
+
+    inputFileJson.onchange = function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            try {
+                const dados = JSON.parse(evt.target.result);
+                if (!Array.isArray(dados)) throw new Error("O arquivo não contém uma lista de resultados válida.");
+                
+                // Concatena ou substitui. Vamos substituir pelo estado do arquivo:
+                resultados = dados; 
+                transicaoParaTrabalho();
+                alert(`✅ Backup carregado com sucesso!\n${resultados.length} registros restaurados.`);
+            } catch (err) {
+                alert("Erro ao ler o arquivo JSON: " + err.message);
+            }
+        };
+        reader.readAsText(file);
+        inputFileJson.value = ""; // limpa o input para permitir importar o mesmo arquivo de novo se precisar
+    };
+
+    // Lógica: CARREGAR GUIDS DO DYNAMICS
     document.getElementById("fg-btn-carregar").onclick = async function() {
         const btn = this;
         const texto = document.getElementById("fg-guids-input").value;
@@ -205,11 +263,10 @@
         
         btn.disabled = true;
         btn.textContent = "CARREGANDO...";
+        
+        // Se já tiver algo, podemos perguntar se quer adicionar ou limpar, mas por padrão vamos limpar para evitar duplicados.
         resultados = [];
         selecionadoIndex = null;
-        
-        // Esconde input para dar espaço para a lista e os cards
-        document.getElementById("fg-guids-input").style.display = "none";
 
         for (let i = 0; i < guidsLimpos.length; i++) {
             const emailId = guidsLimpos[i];
@@ -226,47 +283,19 @@
                     } catch (e) { console.warn("Erro ao buscar incident:", e); }
                 }
 
-                resultados.push({
-                    emailId,
-                    caseId,
-                    assunto: email.subject || "(Sem assunto)",
-                    ticket,
-                    titulo,
-                    status: "Aguardando análise",
-                    statusManual: false
-                });
+                resultados.push({ emailId, caseId, assunto: email.subject || "(Sem assunto)", ticket, titulo, status: "Aguardando análise", statusManual: false });
             } catch (e) {
-                resultados.push({
-                    emailId,
-                    caseId: null,
-                    assunto: "ERRO AO LER EMAIL",
-                    ticket: "-",
-                    titulo: String(e.message),
-                    status: "❌ ERRO",
-                    statusManual: true
-                });
+                resultados.push({ emailId, caseId: null, assunto: "ERRO AO LER EMAIL", ticket: "-", titulo: String(e.message), status: "❌ ERRO", statusManual: true });
             }
         }
 
         btn.disabled = false;
-        btn.textContent = "+ CARREGAR MAIS GUIDS";
-        btn.classList.remove("fg-btn-primary");
-        btn.classList.add("fg-btn-neutral");
-        btn.onclick = () => { document.getElementById("fg-guids-input").style.display = "block"; btn.style.display = "none"; };
+        btn.textContent = "CARREGAR GUIDS";
         
-        document.getElementById("fg-busca").value = "";
-        termoBusca = "";
-        
-        if (resultados.length > 0) {
-            selecionadoIndex = 0;
-            renderLista();
-            renderDetalhe();
-        } else {
-            renderLista();
-        }
+        transicaoParaTrabalho();
     };
 
-    // 6. Lógica de Busca e Filtro
+    // Lógica de Busca e Filtro
     document.getElementById("fg-busca").addEventListener("input", function() {
         termoBusca = normalizar(this.value);
         renderLista();
@@ -281,12 +310,12 @@
         );
     }
 
-    // 7. Renderização da Lista
+    // Renderização da Lista
     function renderLista() {
         const listDiv = document.getElementById("fg-list");
         const filtrados = getFiltrados();
         
-        atualizarResumo(); // Atualiza os cards sempre que a lista for desenhada
+        atualizarResumo(); 
 
         if (!filtrados.length) {
             listDiv.innerHTML = '<div style="padding: 15px; color: #6b7280; font-size: 12px; text-align: center;">Nenhum resultado.</div>';
@@ -314,7 +343,7 @@
         });
     }
 
-    // 8. Renderização do Detalhe e Histórico de Emails
+    // Renderização do Detalhe e Histórico de Emails
     async function renderDetalhe() {
         const rightDiv = document.getElementById("fg-right");
         if (selecionadoIndex === null || !resultados[selecionadoIndex]) {
@@ -365,7 +394,7 @@
             item.status = newStatus;
             item.statusManual = true; 
             document.getElementById("fg-status-display").textContent = newStatus;
-            renderLista(); // Isso agora também vai disparar a atualização dos cards percentuais magicamente!
+            renderLista(); 
         };
 
         document.getElementById("fg-btn-resp").onclick = () => updateStatus("✅ RESPONDEU");
@@ -383,7 +412,6 @@
             }
         };
 
-        // Carregamento da Lista de Emails
         const containerEmails = document.getElementById("fg-emails-container");
         if (!item.caseId) {
             containerEmails.innerHTML = `<div style="color:#b91c1c; font-size:13px;">Sem histórico disponível (Case ID inexistente).</div>`;
@@ -453,7 +481,7 @@
         }
     }
 
-    // 9. Botão de Fechar
+    // Botão de Fechar
     document.getElementById("fg-btn-fechar").onclick = () => {
         overlay.remove();
         style.remove();
