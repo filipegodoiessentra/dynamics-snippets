@@ -2,11 +2,13 @@
     // 1. Limpeza prévia
     document.getElementById("fg-fup-overlay")?.remove();
     document.getElementById("fg-fup-style")?.remove();
+    document.getElementById("fg-fup-minimized")?.remove();
 
     // 2. Variáveis de Estado
     let resultados = [];
     let selecionadoIndex = null;
     let termoBusca = "";
+    let filtroStatus = "todos"; // 'todos', 'erros', 'pendentes'
 
     // Funções utilitárias
     const guid = s => (s || "").replace(/[{}]/g, "").toLowerCase();
@@ -18,10 +20,17 @@
     const style = document.createElement("style");
     style.id = "fg-fup-style";
     style.innerHTML = `
-        #fg-fup-overlay { position: fixed; inset: 0; z-index: 999999; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; font-family: "Segoe UI", Arial, sans-serif; }
+        #fg-fup-overlay { position: fixed; inset: 0; z-index: 999998; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; font-family: "Segoe UI", Arial, sans-serif; transition: 0.3s; }
         #fg-fup-modal { width: 95vw; height: 90vh; background: #fff; border-radius: 12px; display: flex; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.3); position: relative; }
-        #fg-btn-fechar { position: absolute; right: 15px; top: 15px; background: transparent; border: none; font-size: 24px; cursor: pointer; color: #666; z-index: 10; }
+        
+        #fg-btn-fechar { position: absolute; right: 15px; top: 15px; background: transparent; border: none; font-size: 24px; cursor: pointer; color: #666; z-index: 10; line-height: 1; }
         #fg-btn-fechar:hover { color: #000; }
+        
+        #fg-btn-minimizar { position: absolute; right: 50px; top: 5px; background: transparent; border: none; font-size: 28px; cursor: pointer; color: #666; z-index: 10; line-height: 1; font-weight: bold; }
+        #fg-btn-minimizar:hover { color: #000; }
+        
+        #fg-fup-minimized { position: fixed; bottom: 25px; right: 25px; background: #106ebe; color: white; border: none; padding: 12px 20px; border-radius: 30px; font-family: "Segoe UI", sans-serif; font-size: 14px; font-weight: bold; cursor: pointer; z-index: 999999; box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: none; align-items: center; gap: 8px; }
+        #fg-fup-minimized:hover { background: #005a9e; }
         
         /* Lateral Esquerda */
         #fg-left { width: 380px; background: #f9fafb; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; padding: 15px; box-sizing: border-box; }
@@ -38,7 +47,7 @@
         .fg-btn-neutral { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
         
         /* Dashboard */
-        .fg-dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 15px; display: none; margin-bottom: 8px; }
+        .fg-dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; display: none; margin-bottom: 8px; }
         .fg-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .fg-card-title { font-size: 10px; color: #6b7280; text-transform: uppercase; margin-bottom: 5px; font-weight: 600; }
         .fg-card-value { font-size: 16px; font-weight: 700; color: #111827; display: flex; align-items: center; justify-content: center; gap: 5px; }
@@ -47,7 +56,12 @@
         .fg-pct-red { background: #fee2e2; color: #b91c1c; }
         .fg-pct-gray { background: #f3f4f6; color: #4b5563; }
         
-        #fg-busca { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px; font-size: 13px; box-sizing: border-box; margin: 15px 0 10px 0; flex-shrink: 0; }
+        /* Filtros e Busca */
+        #fg-busca { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px; font-size: 13px; box-sizing: border-box; margin: 10px 0; flex-shrink: 0; }
+        .fg-filters { display: flex; gap: 5px; margin-bottom: 10px; }
+        .fg-filter-btn { padding: 4px 10px; border-radius: 12px; border: 1px solid #d1d5db; background: #fff; color: #4b5563; font-size: 11px; cursor: pointer; }
+        .fg-filter-btn.active { background: #106ebe; color: #fff; border-color: #106ebe; font-weight: bold; }
+        
         #fg-list { flex: 1; overflow-y: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; min-height: 0; }
         .fg-item { padding: 12px; border-bottom: 1px solid #f3f4f6; cursor: pointer; }
         .fg-item:hover { background: #f9fafb; }
@@ -58,7 +72,7 @@
         
         /* Painel Direito */
         #fg-right { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 25px; box-sizing: border-box; background: #fff; scroll-behavior: smooth; }
-        .fg-empty { display: flex; flex: 1; align-items: center; justify-content: center; color: #6b7280; font-size: 15px; }
+        .fg-empty { display: flex; flex: 1; align-items: center; justify-content: center; color: #6b7280; font-size: 15px; text-align: center; }
         
         .fg-detail-header { border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 20px; }
         .fg-detail-ticket { font-size: 22px; font-weight: 700; color: #111827; display: flex; align-items: center; justify-content: space-between; }
@@ -90,12 +104,14 @@
     `;
     document.head.appendChild(style);
 
-    // 4. Estrutura HTML
+    // 4. Estrutura HTML Principal
     const overlay = document.createElement("div");
     overlay.id = "fg-fup-overlay";
     overlay.innerHTML = `
         <div id="fg-fup-modal">
-            <button id="fg-btn-fechar" title="Fechar">✖</button>
+            <button id="fg-btn-minimizar" title="Minimizar para a bandeja">_</button>
+            <button id="fg-btn-fechar" title="Fechar ferramenta">✖</button>
+            
             <div id="fg-left">
                 <div class="fg-left-title">Follow-Up Center</div>
                 
@@ -103,30 +119,54 @@
                 
                 <div class="fg-btn-group" id="fg-group-load">
                     <button id="fg-btn-carregar" class="fg-btn fg-btn-primary" style="flex: 1;">CARREGAR GUIDS</button>
-                    <button id="fg-btn-import-json" class="fg-btn fg-btn-neutral" title="Importar backup JSON">📁 IMPORTAR</button>
+                    <button id="fg-btn-import-json" class="fg-btn fg-btn-neutral" title="Importar backup JSON">📁 IMPORTAR JSON</button>
                     <input type="file" id="fg-file-json" accept=".json" style="display:none;" />
                 </div>
 
-                <button id="fg-btn-show-load" class="fg-btn fg-btn-neutral" style="width: 100%; display: none;">+ INSERIR MAIS GUIDS OU IMPORTAR</button>
+                <button id="fg-btn-show-load" class="fg-btn fg-btn-neutral" style="width: 100%; display: none;">+ INSERIR GUIDS / IMPORTAR JSON</button>
 
                 <div id="fg-dashboard" class="fg-dashboard"></div>
                 
                 <div class="fg-btn-group" id="fg-group-export" style="display: none;">
-                    <button id="fg-btn-export-csv" class="fg-btn fg-btn-success" style="flex: 1;">📥 CSV</button>
-                    <button id="fg-btn-export-json" class="fg-btn fg-btn-neutral" style="flex: 1;">💾 JSON</button>
+                    <button id="fg-btn-export-csv" class="fg-btn fg-btn-success" style="flex: 1;" title="Exportar para Excel">📥 EXCEL</button>
+                    <button id="fg-btn-export-json" class="fg-btn fg-btn-neutral" style="flex: 1;" title="Salvar progresso">💾 SALVAR JSON</button>
                 </div>
 
                 <input type="text" id="fg-busca" placeholder="Buscar ticket, título ou status..." autocomplete="off"/>
+                
+                <div class="fg-filters" id="fg-filters">
+                    <button class="fg-filter-btn active" data-filter="todos">Todos</button>
+                    <button class="fg-filter-btn" data-filter="erros">❌ Apenas Erros</button>
+                    <button class="fg-filter-btn" data-filter="pendentes">Aguardando</button>
+                </div>
+
                 <div id="fg-list">
                     <div style="padding: 15px; color: #6b7280; font-size: 12px; text-align: center;">Nenhum registro carregado.</div>
                 </div>
             </div>
             <div id="fg-right">
-                <div class="fg-empty">Selecione um item na lista ao lado.</div>
+                <div class="fg-empty">Selecione um item na lista ao lado para inspecionar os e-mails e aplicar o status.</div>
             </div>
         </div>
     `;
     document.body.appendChild(overlay);
+
+    // Botão de Minimizar (Fica solto no body para sempre aparecer)
+    const btnMinimized = document.createElement("button");
+    btnMinimized.id = "fg-fup-minimized";
+    btnMinimized.innerHTML = "📋 Restaurar Follow-Up";
+    document.body.appendChild(btnMinimized);
+
+    // Lógica de Minimizar e Restaurar
+    document.getElementById("fg-btn-minimizar").onclick = () => {
+        overlay.style.display = "none";
+        btnMinimized.style.display = "flex";
+    };
+
+    btnMinimized.onclick = () => {
+        overlay.style.display = "flex";
+        btnMinimized.style.display = "none";
+    };
 
     // Função de transição de tela
     function transicaoParaTrabalho() {
@@ -137,20 +177,37 @@
         termoBusca = "";
         
         if (resultados.length > 0) {
-            selecionadoIndex = 0;
+            selecionadoIndex = null; // reseta para nao bugar index ao importar
             renderLista();
-            renderDetalhe();
+            // Seleciona o primeiro da lista filtrada, se houver
+            const itensVisiveis = getFiltrados();
+            if(itensVisiveis.length > 0) {
+                selecionadoIndex = resultados.indexOf(itensVisiveis[0]);
+                renderDetalhe();
+            } else {
+                document.getElementById("fg-right").innerHTML = '<div class="fg-empty">Nenhum item corresponde ao filtro atual.</div>';
+            }
         } else {
             renderLista();
         }
     }
 
-    // Botão para voltar a inserir mais guids
+    // Botão para voltar a inserir guids ou importar
     document.getElementById("fg-btn-show-load").onclick = () => {
         document.getElementById("fg-guids-input").style.display = "block";
         document.getElementById("fg-group-load").style.display = "flex";
         document.getElementById("fg-btn-show-load").style.display = "none";
     };
+
+    // Lógica dos Filtros (Todos, Erros, Pendentes)
+    document.querySelectorAll(".fg-filter-btn").forEach(btn => {
+        btn.onclick = (e) => {
+            document.querySelectorAll(".fg-filter-btn").forEach(b => b.classList.remove("active"));
+            e.target.classList.add("active");
+            filtroStatus = e.target.dataset.filter;
+            renderLista();
+        };
+    });
 
     // Atualiza os Cards do Dashboard
     function atualizarResumo() {
@@ -171,9 +228,13 @@
 
         resultados.forEach(r => {
             const st = r.status.toUpperCase();
-            if (st.includes("RESPONDEU") || st.includes("POSSUI RESPOSTA")) comResposta++;
-            else if (st.includes("NÃO RESPONDEU") || st.includes("SEM RESPOSTA")) semResposta++;
-            else if (st.includes("FOLLOW UP")) fup++;
+            if (st.includes("NÃO RESPONDEU") || st.includes("SEM RESPOSTA")) {
+                semResposta++;
+            } else if (st.includes("RESPONDEU") || st.includes("POSSUI RESPOSTA")) {
+                comResposta++;
+            } else if (st.includes("FOLLOW UP")) {
+                fup++;
+            }
         });
 
         const pctResp = total > 0 ? ((comResposta / total) * 100).toFixed(0) : 0;
@@ -239,18 +300,17 @@
         reader.onload = function(evt) {
             try {
                 const dados = JSON.parse(evt.target.result);
-                if (!Array.isArray(dados)) throw new Error("O arquivo não contém uma lista de resultados válida.");
+                if (!Array.isArray(dados)) throw new Error("O arquivo não contém uma lista válida.");
                 
-                // Concatena ou substitui. Vamos substituir pelo estado do arquivo:
                 resultados = dados; 
                 transicaoParaTrabalho();
                 alert(`✅ Backup carregado com sucesso!\n${resultados.length} registros restaurados.`);
             } catch (err) {
-                alert("Erro ao ler o arquivo JSON: " + err.message);
+                alert("Erro ao ler o arquivo JSON. Certifique-se que escolheu o arquivo correto.\nDetalhe: " + err.message);
             }
         };
         reader.readAsText(file);
-        inputFileJson.value = ""; // limpa o input para permitir importar o mesmo arquivo de novo se precisar
+        inputFileJson.value = ""; 
     };
 
     // Lógica: CARREGAR GUIDS DO DYNAMICS
@@ -264,7 +324,6 @@
         btn.disabled = true;
         btn.textContent = "CARREGANDO...";
         
-        // Se já tiver algo, podemos perguntar se quer adicionar ou limpar, mas por padrão vamos limpar para evitar duplicados.
         resultados = [];
         selecionadoIndex = null;
 
@@ -295,19 +354,33 @@
         transicaoParaTrabalho();
     };
 
-    // Lógica de Busca e Filtro
+    // Lógica de Busca por Digitação
     document.getElementById("fg-busca").addEventListener("input", function() {
         termoBusca = normalizar(this.value);
         renderLista();
     });
 
+    // Função de Filtragem Conjunta (Texto + Botão de Aba)
     function getFiltrados() {
-        if (!termoBusca) return resultados;
-        return resultados.filter(r => 
-            normalizar(r.ticket).includes(termoBusca) || 
-            normalizar(r.titulo).includes(termoBusca) || 
-            normalizar(r.status).includes(termoBusca)
-        );
+        let filtrados = resultados;
+
+        // Filtro pelas abas
+        if (filtroStatus === "erros") {
+            filtrados = filtrados.filter(r => r.status.includes("ERRO"));
+        } else if (filtroStatus === "pendentes") {
+            filtrados = filtrados.filter(r => r.status.includes("Aguardando"));
+        }
+
+        // Filtro pela caixa de texto
+        if (termoBusca) {
+            filtrados = filtrados.filter(r => 
+                normalizar(r.ticket).includes(termoBusca) || 
+                normalizar(r.titulo).includes(termoBusca) || 
+                normalizar(r.status).includes(termoBusca)
+            );
+        }
+
+        return filtrados;
     }
 
     // Renderização da Lista
@@ -318,7 +391,7 @@
         atualizarResumo(); 
 
         if (!filtrados.length) {
-            listDiv.innerHTML = '<div style="padding: 15px; color: #6b7280; font-size: 12px; text-align: center;">Nenhum resultado.</div>';
+            listDiv.innerHTML = '<div style="padding: 15px; color: #6b7280; font-size: 12px; text-align: center;">Nenhum resultado para os filtros atuais.</div>';
             return;
         }
 
@@ -347,7 +420,7 @@
     async function renderDetalhe() {
         const rightDiv = document.getElementById("fg-right");
         if (selecionadoIndex === null || !resultados[selecionadoIndex]) {
-            rightDiv.innerHTML = '<div class="fg-empty">Selecione um item na lista ao lado.</div>';
+            rightDiv.innerHTML = '<div class="fg-empty">Selecione um item na lista ao lado para inspecionar os e-mails e aplicar o status.</div>';
             return;
         }
 
@@ -414,7 +487,7 @@
 
         const containerEmails = document.getElementById("fg-emails-container");
         if (!item.caseId) {
-            containerEmails.innerHTML = `<div style="color:#b91c1c; font-size:13px;">Sem histórico disponível (Case ID inexistente).</div>`;
+            containerEmails.innerHTML = `<div style="color:#b91c1c; font-size:13px; background: #fee2e2; padding: 15px; border-radius: 8px;">Sem histórico disponível.<br><br>Geralmente ocorre porque o E-mail de origem falhou ao carregar ou o GUID consultado não está atrelado a um Case (Incidente).</div>`;
             return;
         }
 
@@ -428,7 +501,7 @@
                 return;
             }
 
-            if (!item.statusManual) {
+            if (!item.statusManual && item.status === "Aguardando análise") {
                 const possuiEntrada = emails.some(e => e.directioncode === false);
                 item.status = possuiEntrada ? "✅ POSSUI RESPOSTA" : "❌ SEM RESPOSTA";
                 document.getElementById("fg-status-display").textContent = item.status;
@@ -473,6 +546,7 @@
                     card.classList.toggle("open");
                 };
 
+                // Auto-expande o primeiro email
                 if (i === 0) header.click();
             });
 
@@ -481,10 +555,11 @@
         }
     }
 
-    // Botão de Fechar
+    // Botão de Fechar Total
     document.getElementById("fg-btn-fechar").onclick = () => {
         overlay.remove();
         style.remove();
+        btnMinimized.remove();
     };
 
 })();
