@@ -5,16 +5,17 @@
     document.getElementById("fg-search-minimized")?.remove();
 
     // 2. Variáveis de Estado
-    let resultados = []; // Memória local de todos os cases e e-mails
+    let resultados = []; 
     let selecionadoIndex = null;
     let termoBuscaEmails = "";
-    let filtroLista = ""; // Filtro visual da lista lateral
+    let dataInicioFiltro = null;
+    let dataFimFiltro = null;
 
     // Funções utilitárias
     const extractInfo = str => {
         let texto = String(str).trim();
         let id = null;
-        let entity = "incident"; // Padrão
+        let entity = "incident"; 
         try {
             if (texto.startsWith("http")) {
                 const url = new URL(texto);
@@ -72,15 +73,18 @@
         .fg-btn-primary { background: #106ebe; }
         .fg-btn-neutral { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
         
-        .fg-search-box { width: 100%; border: 2px solid #106ebe; border-radius: 8px; padding: 12px; font-size: 14px; box-sizing: border-box; margin: 15px 0; background: #eff6ff; font-weight: bold; outline: none; }
-        .fg-search-box::placeholder { font-weight: normal; color: #6b7280; }
+        .fg-search-box { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px; font-size: 13px; box-sizing: border-box; margin: 5px 0 10px 0; outline: none; }
+        .fg-search-box.highlight { border: 2px solid #106ebe; background: #eff6ff; font-weight: bold; }
+        
+        .fg-date-row { display: flex; gap: 10px; margin-bottom: 15px; }
+        .fg-date-row > div { flex: 1; }
         
         #fg-list { flex: 1; overflow-y: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; min-height: 0; }
         .fg-item { padding: 12px; border-bottom: 1px solid #f3f4f6; cursor: pointer; position: relative; }
         .fg-item:hover { background: #f9fafb; }
         .fg-item.selected { background: #eff6ff; border-left: 4px solid #106ebe; padding-left: 8px; }
         .fg-item-ticket { font-weight: 700; font-size: 13px; color: #111827; }
-        .fg-item-title { font-size: 12px; color: #4b5563; margin: 4px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .fg-item-title { font-size: 12px; color: #4b5563; margin: 4px 0; line-height: 1.4; }
         .fg-item-status { font-size: 11px; font-weight: bold; padding: 3px 6px; border-radius: 4px; display: inline-block; margin-top: 4px; }
         
         .st-ok { background: #d1fae5; color: #047857; }
@@ -138,8 +142,20 @@
                 </div>
 
                 <div id="fg-step-2" style="display:none;">
-                    <div class="fg-step-label">Passo 2: Busque Instantaneamente</div>
-                    <input type="text" id="fg-keyword-input" class="fg-search-box" placeholder="🔎 Digite a palavra-chave..." autocomplete="off" />
+                    <div class="fg-step-label">Passo 2: Filtre Instantaneamente</div>
+                    
+                    <input type="text" id="fg-keyword-input" class="fg-search-box highlight" placeholder="🔎 Palavra-chave (opcional)..." autocomplete="off" />
+                    
+                    <div class="fg-date-row">
+                        <div>
+                            <div class="fg-step-label" style="margin-top:0;">Data Inicial</div>
+                            <input type="date" id="fg-date-start" class="fg-search-box" style="margin:0;" />
+                        </div>
+                        <div>
+                            <div class="fg-step-label" style="margin-top:0;">Data Final</div>
+                            <input type="date" id="fg-date-end" class="fg-search-box" style="margin:0;" />
+                        </div>
+                    </div>
                     
                     <button id="fg-btn-voltar" class="fg-btn fg-btn-neutral" style="margin-bottom: 10px;">+ CARREGAR MAIS REGISTROS</button>
                 </div>
@@ -184,10 +200,16 @@
         
         resultados = [];
         selecionadoIndex = null;
-        document.getElementById("fg-keyword-input").value = "";
-        termoBuscaEmails = "";
         
-        const casosParaProcessar = new Map(); // Garante não repetir Case
+        // Reseta os filtros
+        document.getElementById("fg-keyword-input").value = "";
+        document.getElementById("fg-date-start").value = "";
+        document.getElementById("fg-date-end").value = "";
+        termoBuscaEmails = "";
+        dataInicioFiltro = null;
+        dataFimFiltro = null;
+        
+        const casosParaProcessar = new Map(); 
 
         // 1. Descobre todos os Cases a partir dos Links
         for (let i = 0; i < linhas.length; i++) {
@@ -201,7 +223,6 @@
                 } catch(e) {}
             } 
             else if (info.entity === "account" || info.entity === "contact") {
-                // Se for conta, salva a própria conta caso haja e-mail direto nela
                 let accName = "Conta";
                 try {
                     if(info.entity === "account") {
@@ -211,7 +232,6 @@
                     }
                 } catch(e) {}
 
-                // Busca TODOS OS CASES (Incident) atrelados à conta
                 try {
                     const reqIncidents = await Xrm.WebApi.retrieveMultipleRecords("incident", `?$select=incidentid,ticketnumber,title&$filter=_customerid_value eq ${info.id}`);
                     reqIncidents.entities.forEach(inc => {
@@ -226,6 +246,7 @@
         for (let c of arrCases) {
             btn.textContent = `⏳ BAIXANDO E-MAILS... (${resultados.length}/${arrCases.length})`;
             try {
+                // E-mails já vêm ordenados decrescente da API
                 const queryEmails = `?$select=activityid,subject,createdon,directioncode,description&$filter=_regardingobjectid_value eq ${c.id}&$orderby=createdon desc`;
                 const reqEmails = await Xrm.WebApi.retrieveMultipleRecords("email", queryEmails);
                 
@@ -235,8 +256,9 @@
                     ticket: c.ticket || "Sem Ticket",
                     titulo: c.title || "(Sem Título)",
                     todosEmails: reqEmails.entities || [],
-                    emailsEncontrados: [], // Será preenchido na hora da busca
-                    statusMsg: "Aguardando busca"
+                    emailsEncontrados: [],
+                    statusMsg: "Aguardando busca",
+                    dataMaisRecente: 0 // Será usado para ordenação
                 });
             } catch(e) { console.warn("Erro ao ler email do case", c.id); }
         }
@@ -244,12 +266,12 @@
         btn.disabled = false;
         btn.textContent = "⬇ CARREGAR DADOS P/ MEMÓRIA";
         
-        // Troca o Layout para o Modo de Busca
+        // Troca Layout
         document.getElementById("fg-step-1").style.display = "none";
         document.getElementById("fg-step-2").style.display = "block";
         document.getElementById("fg-keyword-input").focus();
         
-        aplicarPesquisa(); // Roda pesquisa vazia pra resetar
+        aplicarPesquisa(); 
     };
 
     document.getElementById("fg-btn-voltar").onclick = () => {
@@ -258,41 +280,79 @@
     };
 
     // =========================================================
-    // LÓGICA DE BUSCA OFFLINE (INSTANTÂNEA NA MEMÓRIA)
+    // LÓGICA DE FILTRO E BUSCA OFFLINE
     // =========================================================
     document.getElementById("fg-keyword-input").addEventListener("input", function() {
         termoBuscaEmails = normalizar(this.value).trim();
         aplicarPesquisa();
     });
 
+    document.getElementById("fg-date-start").addEventListener("change", function() {
+        dataInicioFiltro = this.value ? new Date(this.value + "T00:00:00") : null;
+        aplicarPesquisa();
+    });
+
+    document.getElementById("fg-date-end").addEventListener("change", function() {
+        dataFimFiltro = this.value ? new Date(this.value + "T23:59:59") : null;
+        aplicarPesquisa();
+    });
+
     function aplicarPesquisa() {
-        if (!termoBuscaEmails) {
-            resultados.forEach(r => {
+        const isFiltroAtivo = termoBuscaEmails || dataInicioFiltro || dataFimFiltro;
+
+        resultados.forEach(r => {
+            if (!isFiltroAtivo) {
+                // Sem filtros: Mostra todos, pega a data do email mais recente geral
                 r.emailsEncontrados = [];
                 r.statusMsg = `Lido: ${r.todosEmails.length} e-mails`;
-            });
-        } else {
-            resultados.forEach(r => {
+                r.dataMaisRecente = r.todosEmails.length > 0 ? new Date(r.todosEmails[0].createdon).getTime() : 0;
+            } else {
+                // Aplica filtros de data e palavra-chave
                 let matches = [];
                 r.todosEmails.forEach(e => {
-                    const subjectN = normalizar(e.subject || "");
-                    const bodyN = normalizar(extrairTexto(e.description || ""));
-                    if (subjectN.includes(termoBuscaEmails) || bodyN.includes(termoBuscaEmails)) {
-                        matches.push(e);
+                    let matchData = true;
+                    if (dataInicioFiltro || dataFimFiltro) {
+                        const dtEmail = new Date(e.createdon);
+                        if (dataInicioFiltro && dtEmail < dataInicioFiltro) matchData = false;
+                        if (dataFimFiltro && dtEmail > dataFimFiltro) matchData = false;
                     }
+
+                    let matchKw = true;
+                    if (termoBuscaEmails) {
+                        const subjectN = normalizar(e.subject || "");
+                        const bodyN = normalizar(extrairTexto(e.description || ""));
+                        if (!subjectN.includes(termoBuscaEmails) && !bodyN.includes(termoBuscaEmails)) matchKw = false;
+                    }
+
+                    if (matchData && matchKw) matches.push(e);
                 });
+
                 r.emailsEncontrados = matches;
-                r.statusMsg = matches.length > 0 ? `✅ ${matches.length} e-mail(s) com a palavra` : `❌ Não achou`;
-            });
-        }
+                
+                // Define a data mais recente com base APENAS nos e-mails filtrados
+                if (matches.length > 0) {
+                    r.statusMsg = `✅ ${matches.length} e-mail(s) encontrados`;
+                    r.dataMaisRecente = new Date(matches[0].createdon).getTime();
+                } else {
+                    r.statusMsg = `❌ Nenhum encontrado`;
+                    r.dataMaisRecente = 0;
+                }
+            }
+        });
 
         renderLista();
         
-        // Se houver itens na lista e nenhum estiver selecionado, auto-seleciona o primeiro que tem match
+        // Auto-seleciona o melhor item após filtrar
         if (resultados.length > 0) {
-            const primeiroMatch = resultados.findIndex(r => r.emailsEncontrados.length > 0);
-            selecionadoIndex = primeiroMatch >= 0 ? primeiroMatch : 0;
-            renderDetalhe();
+            if (isFiltroAtivo) {
+                // Pega o primeiro que teve match de filtro
+                const primeiroMatch = resultados.findIndex(r => r.emailsEncontrados.length > 0);
+                selecionadoIndex = primeiroMatch >= 0 ? primeiroMatch : null;
+            } else {
+                selecionadoIndex = 0; // Pega o primeiro da lista geral
+            }
+            if(selecionadoIndex !== null) renderDetalhe();
+            else document.getElementById("fg-right").innerHTML = '<div class="fg-empty">Nenhum resultado para os filtros atuais.</div>';
         }
     }
 
@@ -301,32 +361,44 @@
     // =========================================================
     function renderLista() {
         const listDiv = document.getElementById("fg-list");
+        const isFiltroAtivo = termoBuscaEmails || dataInicioFiltro || dataFimFiltro;
         
-        // Organiza a lista: Joga quem achou a palavra para o TOPO da lista
-        let listaOrdenada = [...resultados].sort((a, b) => {
-            if (a.emailsEncontrados.length > 0 && b.emailsEncontrados.length === 0) return -1;
-            if (a.emailsEncontrados.length === 0 && b.emailsEncontrados.length > 0) return 1;
-            return 0;
+        // Ordenação inteligente: 
+        // 1. Quem tem e-mail do filtro sobe
+        // 2. Desempate pela data do e-mail mais recente (mais novos no topo)
+        let listaIndicesOrdenados = resultados.map((r, i) => i).sort((idxA, idxB) => {
+            const a = resultados[idxA];
+            const b = resultados[idxB];
+
+            if (isFiltroAtivo) {
+                if (a.emailsEncontrados.length > 0 && b.emailsEncontrados.length === 0) return -1;
+                if (a.emailsEncontrados.length === 0 && b.emailsEncontrados.length > 0) return 1;
+            }
+            return b.dataMaisRecente - a.dataMaisRecente;
         });
 
-        if (!listaOrdenada.length) {
+        if (!listaIndicesOrdenados.length) {
             listDiv.innerHTML = '<div style="padding: 15px; color: #6b7280; font-size: 12px; text-align: center;">Nenhum registro carregado.</div>';
             return;
         }
 
-        listDiv.innerHTML = listaOrdenada.map((r) => {
-            const indexOriginal = resultados.indexOf(r);
-            const isSelected = selecionadoIndex === indexOriginal;
+        listDiv.innerHTML = listaIndicesOrdenados.map(idx => {
+            const r = resultados[idx];
+            const isSelected = selecionadoIndex === idx;
             
             let classeSt = "st-wait";
-            if (termoBuscaEmails) {
+            if (isFiltroAtivo) {
                 classeSt = r.emailsEncontrados.length > 0 ? "st-ok" : "st-none";
             }
+            
+            const textoData = r.dataMaisRecente > 0 
+                ? `<div style="color:#888; margin-top:2px;">Último e-mail: ${dataBR(new Date(r.dataMaisRecente).toISOString())}</div>` 
+                : "";
 
             return `
-                <div class="fg-item ${isSelected ? 'selected' : ''}" data-index="${indexOriginal}">
+                <div class="fg-item ${isSelected ? 'selected' : ''}" data-index="${idx}">
                     <div class="fg-item-ticket">${eh(r.ticket)}</div>
-                    <div class="fg-item-title">${eh(r.titulo)}</div>
+                    <div class="fg-item-title">${eh(r.titulo)}${textoData}</div>
                     <div class="fg-item-status ${classeSt}">${eh(r.statusMsg)}</div>
                 </div>
             `;
@@ -346,27 +418,27 @@
         if (selecionadoIndex === null || !resultados[selecionadoIndex]) return;
 
         const item = resultados[selecionadoIndex];
+        const isFiltroAtivo = termoBuscaEmails || dataInicioFiltro || dataFimFiltro;
         
-        // Define quais e-mails serão listados na tela direita
-        const emailsParaExibir = termoBuscaEmails && item.emailsEncontrados.length > 0 
+        const emailsParaExibir = isFiltroAtivo && item.emailsEncontrados.length > 0 
             ? item.emailsEncontrados 
             : item.todosEmails;
 
         let msgAviso = "";
-        if (termoBuscaEmails) {
+        if (isFiltroAtivo) {
             msgAviso = item.emailsEncontrados.length > 0 
                 ? `<div style="background:#d1fae5; color:#047857; padding:12px; border-radius:6px; margin-bottom:15px; font-size:14px; font-weight:bold; display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:20px;">✅</span> Palavra-chave encontrada em ${item.emailsEncontrados.length} e-mail(s) neste case.
+                    <span style="font-size:20px;">✅</span> Filtros correspondem a ${item.emailsEncontrados.length} e-mail(s) neste case.
                    </div>`
                 : `<div style="background:#f3f4f6; color:#4b5563; padding:12px; border-radius:6px; margin-bottom:15px; font-size:14px; font-weight:bold; display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:20px;">❌</span> Palavra não encontrada. Exibindo histórico completo:
+                    <span style="font-size:20px;">❌</span> Nenhum e-mail bateu com os filtros. Exibindo histórico completo:
                    </div>`;
         }
 
         let htmlEmails = emailsParaExibir.map((e, idx) => {
             const isSaida = e.directioncode === true;
             const badge = isSaida ? `<span class="fg-dir-out">📤 SAÍDA</span>` : `<span class="fg-dir-in">📥 ENTRADA</span>`;
-            const isMatch = termoBuscaEmails && item.emailsEncontrados.includes(e);
+            const isMatch = isFiltroAtivo && item.emailsEncontrados.includes(e);
             const cssMatch = isMatch ? "match" : "";
             
             return `
@@ -387,7 +459,7 @@
         }).join("");
 
         if (!emailsParaExibir.length) {
-            htmlEmails = `<div style="color:#6b7280; font-size:14px; text-align:center; padding:20px;">Este registro não possui e-mails.</div>`;
+            htmlEmails = `<div style="color:#6b7280; font-size:14px; text-align:center; padding:20px;">Este registro não possui e-mails no período selecionado.</div>`;
         }
 
         rightDiv.innerHTML = `
@@ -406,7 +478,6 @@
             </div>
         `;
 
-        // Logica dos iframes para injeção e highlight amarelo
         const cards = rightDiv.querySelectorAll(".fg-email-card");
         cards.forEach((card, i) => {
             const header = card.querySelector(".fg-email-header");
@@ -424,7 +495,6 @@
                         htmlContent = `<html><head><style>body{font-family:sans-serif;font-size:14px;padding:15px;}</style></head><body>${htmlContent}</body></html>`;
                     }
                     
-                    // Highlight Amarelo da palavra chave
                     if (termoBuscaEmails) {
                         const regexKw = new RegExp(`(${termoBuscaEmails})`, 'gi');
                         htmlContent = htmlContent.replace(regexKw, '<mark>$1</mark>');
@@ -436,8 +506,8 @@
                 card.classList.toggle("open");
             };
 
-            // Auto-expande o primeiro se achou alguma coisa
-            if (i === 0 && termoBuscaEmails && item.emailsEncontrados.length > 0) {
+            // Auto-expande o primeiro e-mail válido da lista exibida
+            if (i === 0 && emailsParaExibir.length > 0) {
                 header.click();
             }
         });
