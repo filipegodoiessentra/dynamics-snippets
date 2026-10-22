@@ -40,6 +40,7 @@
     const dataBR = s => { try { return s ? new Date(s).toLocaleString("pt-BR") : "-"; } catch { return s || "-"; } };
     const eh = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     const normalizar = s => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const escapeRegExp = string => String(string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     
     const extrairTexto = html => {
         try {
@@ -47,6 +48,20 @@
             tmp.innerHTML = html || "";
             return (tmp.textContent || tmp.innerText || "").toLowerCase();
         } catch(e) { return ""; }
+    };
+
+    const base64ToBlob = (base64, mimeType) => {
+        const byteCharacters = atob(base64);
+        const byteArrays = [];
+        for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
+            const slice = byteCharacters.slice(offset, offset + 1024);
+            const byteNumbers = new Array(slice.length);
+            for (let i = 0; i < slice.length; i++) {
+                byteNumbers[i] = slice.charCodeAt(i);
+            }
+            byteArrays.push(new Uint8Array(byteNumbers));
+        }
+        return new Blob(byteArrays, { type: mimeType });
     };
 
     // 3. Injeção de CSS
@@ -120,10 +135,12 @@
         
         /* Anexos Badges */
         .fg-att-badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
-        .fg-att-badge { font-size: 11px; background: #e5e7eb; color: #374151; padding: 3px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #d1d5db; }
+        .fg-att-badge { font-size: 12px; background: #e5e7eb; color: #374151; padding: 4px 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #d1d5db; cursor: pointer; transition: 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .fg-att-badge:hover { background: #d1d5db; transform: translateY(-1px); }
         .fg-att-badge.match { background: #d1fae5; border-color: #059669; color: #047857; font-weight: bold; }
+        .fg-att-badge.match:hover { background: #a7f3d0; }
 
-        .fg-email-body { display: none; border-top: 1px solid #e5e7eb; }
+        .fg-email-body { display: none; border-top: 1px solid #e5e7eb; position: relative; }
         .fg-email-card.open .fg-email-body { display: block; }
         .fg-email-frame { width: 100%; height: 500px; border: none; background: #fff; display: block; }
         .fg-btn-open-email { font-size: 11px; background: #106ebe; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
@@ -263,19 +280,18 @@
             btn.textContent = `⏳ BAIXANDO E-MAILS E ANEXOS (${idxCase + 1}/${arrCases.length})...`;
             
             try {
-                // Removida a dependência do campo hasattachments que causava erro 400
                 const queryEmails = `?$select=activityid,subject,createdon,directioncode,description&$filter=_regardingobjectid_value eq ${c.id}&$orderby=createdon desc`;
                 const reqEmails = await Xrm.WebApi.retrieveMultipleRecords("email", queryEmails);
                 const emails = reqEmails.entities || [];
 
                 if (emails.length > 0) {
-                    // Busca todos os anexos de forma rápida agrupando por e-mail de 15 em 15
                     for (let k = 0; k < emails.length; k += 15) {
                         const chunk = emails.slice(k, k + 15);
                         const filterIds = chunk.map(e => `_objectid_value eq ${e.activityid}`).join(" or ");
                         
                         try {
-                            const queryAtt = `?$select=_objectid_value,filename,mimetype&$filter=${filterIds}`;
+                            // Traz informações dos anexos, inclusive o attachmentcontentid (necessário para as imagens inline)
+                            const queryAtt = `?$select=activitymimeattachmentid,_objectid_value,filename,mimetype,attachmentcontentid&$filter=${filterIds}`;
                             const reqAtt = await Xrm.WebApi.retrieveMultipleRecords("activitymimeattachment", queryAtt);
                             const anexosGerais = reqAtt.entities || [];
                             
@@ -511,11 +527,17 @@
             
             let htmlAnexos = "";
             if (e.attachmentsInfo && e.attachmentsInfo.length > 0) {
-                const badgesAt = e.attachmentsInfo.map(a => {
-                    const isAttMatch = termoBuscaAnexo && normalizar(a.filename || "").includes(termoBuscaAnexo);
-                    return `<span class="fg-att-badge ${isAttMatch ? 'match' : ''}">📎 ${eh(a.filename)}</span>`;
-                }).join('');
-                htmlAnexos = `<div class="fg-att-badges">${badgesAt}</div>`;
+                // Filtramos imagens que funcionam apenas como "assinaturas/ícones" para não poluir os anexos úteis
+                // Imagens pequenas geradas por assinaturas do outlook geralmente não têm filename útil, ou são image*
+                const anexosVisiveis = e.attachmentsInfo.filter(a => a.filename && !a.filename.startsWith("image0"));
+                
+                if (anexosVisiveis.length > 0) {
+                    const badgesAt = anexosVisiveis.map(a => {
+                        const isAttMatch = termoBuscaAnexo && normalizar(a.filename).includes(termoBuscaAnexo);
+                        return `<span class="fg-att-badge ${isAttMatch ? 'match' : ''}" data-attid="${a.activitymimeattachmentid}" title="Baixar / Visualizar Anexo">📎 ${eh(a.filename)}</span>`;
+                    }).join('');
+                    htmlAnexos = `<div class="fg-att-badges">${badgesAt}</div>`;
+                }
             }
             
             return `
@@ -530,7 +552,7 @@
                         </div>
                         <div class="fg-email-meta">
                             <span>${eh(dataBR(e.createdon))}</span>
-                            <button class="fg-btn-open-email" onclick="event.stopPropagation(); Xrm.Navigation.openForm({ entityName: 'email', entityId: '${e.activityid}' })">ABRIR E-MAIL ↗</button>
+                            <button class="fg-btn-open-email" onclick="event.stopPropagation(); Xrm.Navigation.openForm({ entityName: 'email', entityId: '${e.activityid}' })">ABRIR NO CRM ↗</button>
                         </div>
                     </div>
                     <div class="fg-email-body"></div>
@@ -558,21 +580,28 @@
             </div>
         `;
 
+        // =========================================================
+        // EVENTOS DE CLIQUE: E-MAILS (HTML + IMAGENS INLINE)
+        // =========================================================
         const cards = rightDiv.querySelectorAll(".fg-email-card");
         cards.forEach((card, i) => {
             const header = card.querySelector(".fg-email-header");
             const body = card.querySelector(".fg-email-body");
             const emailData = item.todosEmails[card.dataset.idx];
 
-            header.onclick = () => {
+            header.onclick = async () => {
                 const isOpen = card.classList.contains("open");
-                if (!isOpen && !body.innerHTML.includes("iframe")) {
+                
+                if (!isOpen && !body.querySelector("iframe")) {
                     const iframe = document.createElement("iframe");
                     iframe.className = "fg-email-frame";
                     let htmlContent = emailData.description || "<p>(Corpo do email vazio)</p>";
                     
+                    // Ajuste visual pro HTML
                     if (!htmlContent.includes("<html")) {
-                        htmlContent = `<html><head><style>body{font-family:sans-serif;font-size:14px;padding:15px;}</style></head><body>${htmlContent}</body></html>`;
+                        htmlContent = `<html><head><style>body{font-family:sans-serif;font-size:14px;padding:15px;} img{max-width:100%; height:auto;}</style></head><body>${htmlContent}</body></html>`;
+                    } else {
+                        htmlContent = htmlContent.replace(/<head>/i, '<head><style>img{max-width:100%; height:auto;}</style>');
                     }
                     
                     if (termoBuscaEmails) {
@@ -582,16 +611,106 @@
                     
                     iframe.srcdoc = htmlContent;
                     body.appendChild(iframe);
+
+                    // CARREGAMENTO SOB DEMANDA: IMAGENS INLINE (cid:)
+                    if (htmlContent.includes("cid:")) {
+                        const loadingBadge = document.createElement("div");
+                        loadingBadge.innerHTML = "⏳ Processando imagens da mensagem...";
+                        loadingBadge.style.fontSize = "11px";
+                        loadingBadge.style.color = "#ff8c00";
+                        loadingBadge.style.padding = "8px 15px";
+                        loadingBadge.style.background = "#fffbeb";
+                        loadingBadge.style.borderBottom = "1px solid #fde68a";
+                        body.insertBefore(loadingBadge, iframe);
+                        
+                        try {
+                            const reqAtt = await Xrm.WebApi.retrieveMultipleRecords("activitymimeattachment", `?$select=body,mimetype,attachmentcontentid,filename&$filter=_objectid_value eq ${emailData.activityid}`);
+                            let newHtml = htmlContent;
+                            
+                            if (reqAtt.entities && reqAtt.entities.length > 0) {
+                                reqAtt.entities.forEach(att => {
+                                    if (att.body && (att.mimetype || "").toLowerCase().startsWith("image/")) {
+                                        const dataUrl = `data:${att.mimetype};base64,${att.body}`;
+                                        
+                                        if (att.attachmentcontentid) {
+                                            const cidLimpo = att.attachmentcontentid.replace(/^<|>$/g, ""); 
+                                            const cidRegex = new RegExp(`cid:${escapeRegExp(cidLimpo)}`, "gi");
+                                            newHtml = newHtml.replace(cidRegex, dataUrl);
+                                        }
+                                        if (att.filename) {
+                                            const cidRegex2 = new RegExp(`cid:${escapeRegExp(att.filename)}`, "gi");
+                                            newHtml = newHtml.replace(cidRegex2, dataUrl);
+                                        }
+                                    }
+                                });
+                                iframe.srcdoc = newHtml;
+                            }
+                            loadingBadge.remove();
+                        } catch(err) {
+                            loadingBadge.innerHTML = "❌ Erro ao carregar algumas imagens da mensagem.";
+                            loadingBadge.style.color = "#d13438";
+                            loadingBadge.style.background = "#fef2f2";
+                            loadingBadge.style.borderBottom = "1px solid #fecaca";
+                        }
+                    }
                 }
                 card.classList.toggle("open");
             };
 
+            // Auto-expande o primeiro
             if (i === 0 && emailsParaExibir.length > 0) {
                 header.click();
             }
         });
+
+        // =========================================================
+        // EVENTOS DE CLIQUE: DOWNLOAD/ABRIR ANEXOS EM NOVA ABA
+        // =========================================================
+        const attBadges = rightDiv.querySelectorAll(".fg-att-badge");
+        attBadges.forEach(badge => {
+            badge.onclick = async (e) => {
+                e.stopPropagation(); 
+                
+                const attId = badge.dataset.attid;
+                if (!attId) return;
+                
+                const originalText = badge.innerHTML;
+                badge.innerHTML = "⏳ Aguarde...";
+                badge.style.pointerEvents = "none";
+                
+                try {
+                    const req = await Xrm.WebApi.retrieveRecord("activitymimeattachment", attId, "?$select=body,mimetype,filename");
+                    
+                    if (!req.body) {
+                        alert("O corpo deste anexo está vazio ou corrompido no CRM.");
+                        badge.innerHTML = originalText;
+                        badge.style.pointerEvents = "auto";
+                        return;
+                    }
+                    
+                    const mimeType = req.mimetype || 'application/octet-stream';
+                    const blob = base64ToBlob(req.body, mimeType);
+                    const blobUrl = URL.createObjectURL(blob);
+                    
+                    // Tenta abrir numa nova aba. Se o navegador bloquear, faz o download via link <a download>
+                    const novaJanela = window.open(blobUrl, '_blank');
+                    if (!novaJanela) {
+                        const a = document.createElement('a');
+                        a.href = blobUrl;
+                        a.download = req.filename;
+                        a.click();
+                    }
+                } catch (err) {
+                    alert("Erro ao tentar baixar o anexo: " + err.message);
+                }
+                
+                badge.innerHTML = originalText;
+                badge.style.pointerEvents = "auto";
+            };
+        });
     }
 
+    // Botão de Fechar Total
     document.getElementById("fg-btn-fechar").onclick = () => {
         overlay.remove();
         style.remove();
