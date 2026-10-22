@@ -8,6 +8,7 @@
     let resultados = []; 
     let selecionadoIndex = null;
     let termoBuscaEmails = "";
+    let termoBuscaAnexo = "";
     let dataInicioFiltro = null;
     let dataFimFiltro = null;
 
@@ -114,6 +115,11 @@
         .fg-dir-in { color: #047857; font-weight: 700; background: #d1fae5; padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; }
         .fg-dir-out { color: #1d4ed8; font-weight: 700; background: #dbeafe; padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; }
         
+        /* Anexos Badges */
+        .fg-att-badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
+        .fg-att-badge { font-size: 11px; background: #e5e7eb; color: #374151; padding: 3px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #d1d5db; }
+        .fg-att-badge.match { background: #d1fae5; border-color: #059669; color: #047857; font-weight: bold; }
+
         .fg-email-body { display: none; border-top: 1px solid #e5e7eb; }
         .fg-email-card.open .fg-email-body { display: block; }
         .fg-email-frame { width: 100%; height: 500px; border: none; background: #fff; display: block; }
@@ -133,7 +139,7 @@
             <button id="fg-btn-fechar" title="Fechar">✖</button>
             
             <div id="fg-left">
-                <div class="fg-left-title">Localizador de E-mails Avançado</div>
+                <div class="fg-left-title">Localizador de E-mails e Anexos</div>
                 
                 <div id="fg-step-1">
                     <div class="fg-step-label">Passo 1: Cole os Links (Contas, Cases)</div>
@@ -145,6 +151,7 @@
                     <div class="fg-step-label">Passo 2: Filtre Instantaneamente</div>
                     
                     <input type="text" id="fg-keyword-input" class="fg-search-box highlight" placeholder="🔎 Palavra-chave (opcional)..." autocomplete="off" />
+                    <input type="text" id="fg-attachment-input" class="fg-search-box" placeholder="📎 Filtrar anexo (ex: pdf, xml, boleto)..." autocomplete="off" />
                     
                     <div class="fg-date-row">
                         <div>
@@ -170,7 +177,7 @@
                 <div class="fg-empty">
                     <span style="font-size:30px;">📥</span>
                     <strong>Siga o Passo 1 ao lado.</strong>
-                    Cole o link de uma Conta, e o sistema fará o download<br>do histórico de todos os Cases dela.
+                    Cole o link de uma Conta, e o sistema fará o download<br>do histórico de todos os Cases e Anexos dela.
                 </div>
             </div>
         </div>
@@ -196,22 +203,23 @@
         if (!linhas.length) return alert("Cole pelo menos um link no campo.");
         
         btn.disabled = true;
-        btn.textContent = "⏳ BAIXANDO HISTÓRICO DO CRM...";
+        btn.textContent = "⏳ LENDO REGISTROS...";
         
         resultados = [];
         selecionadoIndex = null;
         
         // Reseta os filtros
         document.getElementById("fg-keyword-input").value = "";
+        document.getElementById("fg-attachment-input").value = "";
         document.getElementById("fg-date-start").value = "";
         document.getElementById("fg-date-end").value = "";
         termoBuscaEmails = "";
+        termoBuscaAnexo = "";
         dataInicioFiltro = null;
         dataFimFiltro = null;
         
         const casosParaProcessar = new Map(); 
 
-        // 1. Descobre todos os Cases a partir dos Links
         for (let i = 0; i < linhas.length; i++) {
             const info = extractInfo(linhas[i]);
             if (!info.id) continue;
@@ -241,24 +249,36 @@
             }
         }
 
-        // 2. Faz o Download dos E-mails de Todos os Cases Identificados
         const arrCases = Array.from(casosParaProcessar.values());
         for (let c of arrCases) {
-            btn.textContent = `⏳ BAIXANDO E-MAILS... (${resultados.length}/${arrCases.length})`;
+            btn.textContent = `⏳ BAIXANDO E-MAILS E ANEXOS... (${resultados.length + 1}/${arrCases.length})`;
             try {
-                // E-mails já vêm ordenados decrescente da API
-                const queryEmails = `?$select=activityid,subject,createdon,directioncode,description&$filter=_regardingobjectid_value eq ${c.id}&$orderby=createdon desc`;
+                // Aqui puxamos se o email TEM anexo (hasattachments)
+                const queryEmails = `?$select=activityid,subject,createdon,directioncode,description,hasattachments&$filter=_regardingobjectid_value eq ${c.id}&$orderby=createdon desc`;
                 const reqEmails = await Xrm.WebApi.retrieveMultipleRecords("email", queryEmails);
+                const emails = reqEmails.entities || [];
+
+                // Faz o download da lista de anexos dos e-mails que possuem anexo
+                for (let e of emails) {
+                    if (e.hasattachments) {
+                        try {
+                            const reqAtt = await Xrm.WebApi.retrieveMultipleRecords("activitymimeattachment", `?$select=filename,mimetype&$filter=_objectid_value eq ${e.activityid}`);
+                            e.attachmentsInfo = reqAtt.entities || [];
+                        } catch(err) { e.attachmentsInfo = []; }
+                    } else {
+                        e.attachmentsInfo = [];
+                    }
+                }
                 
                 resultados.push({
                     caseId: c.id,
                     entityName: c.entity,
                     ticket: c.ticket || "Sem Ticket",
                     titulo: c.title || "(Sem Título)",
-                    todosEmails: reqEmails.entities || [],
+                    todosEmails: emails,
                     emailsEncontrados: [],
                     statusMsg: "Aguardando busca",
-                    dataMaisRecente: 0 // Será usado para ordenação
+                    dataMaisRecente: 0 
                 });
             } catch(e) { console.warn("Erro ao ler email do case", c.id); }
         }
@@ -266,7 +286,6 @@
         btn.disabled = false;
         btn.textContent = "⬇ CARREGAR DADOS P/ MEMÓRIA";
         
-        // Troca Layout
         document.getElementById("fg-step-1").style.display = "none";
         document.getElementById("fg-step-2").style.display = "block";
         document.getElementById("fg-keyword-input").focus();
@@ -287,6 +306,11 @@
         aplicarPesquisa();
     });
 
+    document.getElementById("fg-attachment-input").addEventListener("input", function() {
+        termoBuscaAnexo = normalizar(this.value).trim();
+        aplicarPesquisa();
+    });
+
     document.getElementById("fg-date-start").addEventListener("change", function() {
         dataInicioFiltro = this.value ? new Date(this.value + "T00:00:00") : null;
         aplicarPesquisa();
@@ -298,16 +322,14 @@
     });
 
     function aplicarPesquisa() {
-        const isFiltroAtivo = termoBuscaEmails || dataInicioFiltro || dataFimFiltro;
+        const isFiltroAtivo = termoBuscaEmails || termoBuscaAnexo || dataInicioFiltro || dataFimFiltro;
 
         resultados.forEach(r => {
             if (!isFiltroAtivo) {
-                // Sem filtros: Mostra todos, pega a data do email mais recente geral
                 r.emailsEncontrados = [];
                 r.statusMsg = `Lido: ${r.todosEmails.length} e-mails`;
                 r.dataMaisRecente = r.todosEmails.length > 0 ? new Date(r.todosEmails[0].createdon).getTime() : 0;
             } else {
-                // Aplica filtros de data e palavra-chave
                 let matches = [];
                 r.todosEmails.forEach(e => {
                     let matchData = true;
@@ -324,12 +346,21 @@
                         if (!subjectN.includes(termoBuscaEmails) && !bodyN.includes(termoBuscaEmails)) matchKw = false;
                     }
 
-                    if (matchData && matchKw) matches.push(e);
+                    let matchAnexo = true;
+                    if (termoBuscaAnexo) {
+                        matchAnexo = false;
+                        if (e.attachmentsInfo && e.attachmentsInfo.length > 0) {
+                            if (e.attachmentsInfo.some(a => normalizar(a.filename || "").includes(termoBuscaAnexo))) {
+                                matchAnexo = true;
+                            }
+                        }
+                    }
+
+                    if (matchData && matchKw && matchAnexo) matches.push(e);
                 });
 
                 r.emailsEncontrados = matches;
                 
-                // Define a data mais recente com base APENAS nos e-mails filtrados
                 if (matches.length > 0) {
                     r.statusMsg = `✅ ${matches.length} e-mail(s) encontrados`;
                     r.dataMaisRecente = new Date(matches[0].createdon).getTime();
@@ -342,14 +373,12 @@
 
         renderLista();
         
-        // Auto-seleciona o melhor item após filtrar
         if (resultados.length > 0) {
             if (isFiltroAtivo) {
-                // Pega o primeiro que teve match de filtro
                 const primeiroMatch = resultados.findIndex(r => r.emailsEncontrados.length > 0);
                 selecionadoIndex = primeiroMatch >= 0 ? primeiroMatch : null;
             } else {
-                selecionadoIndex = 0; // Pega o primeiro da lista geral
+                selecionadoIndex = 0; 
             }
             if(selecionadoIndex !== null) renderDetalhe();
             else document.getElementById("fg-right").innerHTML = '<div class="fg-empty">Nenhum resultado para os filtros atuais.</div>';
@@ -361,11 +390,8 @@
     // =========================================================
     function renderLista() {
         const listDiv = document.getElementById("fg-list");
-        const isFiltroAtivo = termoBuscaEmails || dataInicioFiltro || dataFimFiltro;
+        const isFiltroAtivo = termoBuscaEmails || termoBuscaAnexo || dataInicioFiltro || dataFimFiltro;
         
-        // Ordenação inteligente: 
-        // 1. Quem tem e-mail do filtro sobe
-        // 2. Desempate pela data do e-mail mais recente (mais novos no topo)
         let listaIndicesOrdenados = resultados.map((r, i) => i).sort((idxA, idxB) => {
             const a = resultados[idxA];
             const b = resultados[idxB];
@@ -418,7 +444,7 @@
         if (selecionadoIndex === null || !resultados[selecionadoIndex]) return;
 
         const item = resultados[selecionadoIndex];
-        const isFiltroAtivo = termoBuscaEmails || dataInicioFiltro || dataFimFiltro;
+        const isFiltroAtivo = termoBuscaEmails || termoBuscaAnexo || dataInicioFiltro || dataFimFiltro;
         
         const emailsParaExibir = isFiltroAtivo && item.emailsEncontrados.length > 0 
             ? item.emailsEncontrados 
@@ -441,11 +467,24 @@
             const isMatch = isFiltroAtivo && item.emailsEncontrados.includes(e);
             const cssMatch = isMatch ? "match" : "";
             
+            // Tratamento das pílulas de anexo
+            let htmlAnexos = "";
+            if (e.attachmentsInfo && e.attachmentsInfo.length > 0) {
+                const badgesAt = e.attachmentsInfo.map(a => {
+                    const isAttMatch = termoBuscaAnexo && normalizar(a.filename || "").includes(termoBuscaAnexo);
+                    return `<span class="fg-att-badge ${isAttMatch ? 'match' : ''}">📎 ${eh(a.filename)}</span>`;
+                }).join('');
+                htmlAnexos = `<div class="fg-att-badges">${badgesAt}</div>`;
+            }
+            
             return `
                 <div class="fg-email-card ${cssMatch}" data-idx="${item.todosEmails.indexOf(e)}">
                     <div class="fg-email-header">
                         <div class="fg-email-top">
-                            <div class="fg-email-subject">${eh(e.subject || "(Sem Assunto)")}</div>
+                            <div class="fg-email-subject">
+                                ${eh(e.subject || "(Sem Assunto)")}
+                                ${htmlAnexos}
+                            </div>
                             <div>${badge}</div>
                         </div>
                         <div class="fg-email-meta">
@@ -506,7 +545,6 @@
                 card.classList.toggle("open");
             };
 
-            // Auto-expande o primeiro e-mail válido da lista exibida
             if (i === 0 && emailsParaExibir.length > 0) {
                 header.click();
             }
