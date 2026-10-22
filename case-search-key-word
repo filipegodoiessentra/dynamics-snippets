@@ -1,0 +1,452 @@
+(async function () {
+    // 1. Limpeza prévia
+    document.getElementById("fg-search-overlay")?.remove();
+    document.getElementById("fg-search-style")?.remove();
+    document.getElementById("fg-search-minimized")?.remove();
+
+    // 2. Variáveis de Estado
+    let resultados = []; // Memória local de todos os cases e e-mails
+    let selecionadoIndex = null;
+    let termoBuscaEmails = "";
+    let filtroLista = ""; // Filtro visual da lista lateral
+
+    // Funções utilitárias
+    const extractInfo = str => {
+        let texto = String(str).trim();
+        let id = null;
+        let entity = "incident"; // Padrão
+        try {
+            if (texto.startsWith("http")) {
+                const url = new URL(texto);
+                const idParam = url.searchParams.get("id");
+                if (idParam) id = idParam.replace(/[{}]/g, "").toLowerCase();
+                const etnParam = url.searchParams.get("etn");
+                if (etnParam) entity = etnParam.toLowerCase();
+            }
+        } catch(e) {}
+        if (!id) {
+            const matchParam = texto.match(/[?&]id=([0-9a-fA-F\-]{36})/);
+            if (matchParam) id = matchParam[1].toLowerCase();
+        }
+        if (!id) {
+            const guidPuro = texto.replace(/[{}]/g, "").toLowerCase();
+            if (/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(guidPuro)) id = guidPuro;
+        }
+        return { id, entity };
+    };
+    
+    const dataBR = s => { try { return s ? new Date(s).toLocaleString("pt-BR") : "-"; } catch { return s || "-"; } };
+    const eh = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    const normalizar = s => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    
+    const extrairTexto = html => {
+        const tmp = document.createElement("div");
+        tmp.innerHTML = html || "";
+        return (tmp.textContent || tmp.innerText || "").toLowerCase();
+    };
+
+    // 3. Injeção de CSS
+    const style = document.createElement("style");
+    style.id = "fg-search-style";
+    style.innerHTML = `
+        #fg-search-overlay { position: fixed; inset: 0; z-index: 999998; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; font-family: "Segoe UI", Arial, sans-serif; transition: 0.3s; }
+        #fg-search-modal { width: 95vw; height: 92vh; background: #fff; border-radius: 12px; display: flex; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.4); position: relative; }
+        
+        #fg-btn-fechar { position: absolute; right: 15px; top: 15px; background: transparent; border: none; font-size: 24px; cursor: pointer; color: #666; z-index: 10; line-height: 1; }
+        #fg-btn-fechar:hover { color: #000; }
+        #fg-btn-minimizar { position: absolute; right: 50px; top: 5px; background: transparent; border: none; font-size: 28px; cursor: pointer; color: #666; z-index: 10; line-height: 1; font-weight: bold; }
+        #fg-btn-minimizar:hover { color: #000; }
+        
+        #fg-search-minimized { position: fixed; bottom: 25px; right: 25px; background: #106ebe; color: white; border: none; padding: 12px 20px; border-radius: 30px; font-family: "Segoe UI", sans-serif; font-size: 14px; font-weight: bold; cursor: pointer; z-index: 999999; box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: none; align-items: center; }
+        
+        /* Lateral Esquerda */
+        #fg-left { width: 400px; background: #f9fafb; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; }
+        .fg-left-title { font-size: 18px; font-weight: 700; margin-bottom: 15px; color: #111827; }
+        
+        .fg-step-label { font-size: 12px; font-weight: 600; color: #4b5563; text-transform: uppercase; margin-bottom: 5px; margin-top: 10px; }
+        #fg-links-input { width: 100%; height: 100px; resize: none; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px; font-size: 12px; box-sizing: border-box; margin-bottom: 10px; flex-shrink: 0; }
+        
+        .fg-btn { padding: 10px 15px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; color: white; transition: 0.2s; width: 100%; text-transform: uppercase; }
+        .fg-btn:hover { opacity: 0.9; }
+        .fg-btn:disabled { background: #9ca3af !important; cursor: not-allowed; }
+        .fg-btn-primary { background: #106ebe; }
+        .fg-btn-neutral { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+        
+        .fg-search-box { width: 100%; border: 2px solid #106ebe; border-radius: 8px; padding: 12px; font-size: 14px; box-sizing: border-box; margin: 15px 0; background: #eff6ff; font-weight: bold; outline: none; }
+        .fg-search-box::placeholder { font-weight: normal; color: #6b7280; }
+        
+        #fg-list { flex: 1; overflow-y: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; min-height: 0; }
+        .fg-item { padding: 12px; border-bottom: 1px solid #f3f4f6; cursor: pointer; position: relative; }
+        .fg-item:hover { background: #f9fafb; }
+        .fg-item.selected { background: #eff6ff; border-left: 4px solid #106ebe; padding-left: 8px; }
+        .fg-item-ticket { font-weight: 700; font-size: 13px; color: #111827; }
+        .fg-item-title { font-size: 12px; color: #4b5563; margin: 4px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .fg-item-status { font-size: 11px; font-weight: bold; padding: 3px 6px; border-radius: 4px; display: inline-block; margin-top: 4px; }
+        
+        .st-ok { background: #d1fae5; color: #047857; }
+        .st-none { background: #f3f4f6; color: #6b7280; }
+        .st-wait { background: #e0e7ff; color: #3730a3; }
+        
+        /* Painel Direito */
+        #fg-right { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 30px; box-sizing: border-box; background: #fff; scroll-behavior: smooth; }
+        .fg-empty { display: flex; flex: 1; align-items: center; justify-content: center; color: #6b7280; font-size: 16px; text-align: center; flex-direction: column; gap: 10px;}
+        
+        .fg-detail-header { border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 20px; }
+        .fg-detail-ticket { font-size: 24px; font-weight: 700; color: #111827; display: flex; align-items: center; justify-content: space-between; }
+        .fg-link-crm { font-size: 12px; color: #106ebe; text-decoration: underline; cursor: pointer; font-weight: bold; background: #f0f6ff; padding: 6px 12px; border-radius: 15px; }
+        
+        .fg-section-title { font-size: 16px; font-weight: 700; color: #111827; margin: 25px 0 15px 0; border-bottom: 2px solid #f3f4f6; padding-bottom: 5px; }
+        
+        /* Emails */
+        .fg-email-list { display: flex; flex-direction: column; gap: 12px; }
+        .fg-email-card { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .fg-email-card.match { border-left: 5px solid #107c10; }
+        .fg-email-header { padding: 15px; background: #f9fafb; cursor: pointer; display: flex; flex-direction: column; gap: 8px; }
+        .fg-email-header:hover { background: #f3f4f6; }
+        .fg-email-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .fg-email-subject { font-size: 15px; font-weight: 700; color: #1f2937; line-height: 1.3; }
+        .fg-email-meta { font-size: 12px; color: #6b7280; display: flex; justify-content: space-between; align-items: center; }
+        
+        .fg-dir-in { color: #047857; font-weight: 700; background: #d1fae5; padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; }
+        .fg-dir-out { color: #1d4ed8; font-weight: 700; background: #dbeafe; padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; }
+        
+        .fg-email-body { display: none; border-top: 1px solid #e5e7eb; }
+        .fg-email-card.open .fg-email-body { display: block; }
+        .fg-email-frame { width: 100%; height: 500px; border: none; background: #fff; display: block; }
+        .fg-btn-open-email { font-size: 11px; background: #106ebe; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .fg-btn-open-email:hover { background: #005a9e; }
+        
+        mark { background-color: #fef08a; padding: 0 2px; border-radius: 2px; font-weight: bold; }
+    `;
+    document.head.appendChild(style);
+
+    // 4. Estrutura HTML
+    const overlay = document.createElement("div");
+    overlay.id = "fg-search-overlay";
+    overlay.innerHTML = `
+        <div id="fg-search-modal">
+            <button id="fg-btn-minimizar" title="Minimizar">_</button>
+            <button id="fg-btn-fechar" title="Fechar">✖</button>
+            
+            <div id="fg-left">
+                <div class="fg-left-title">Localizador de E-mails Avançado</div>
+                
+                <div id="fg-step-1">
+                    <div class="fg-step-label">Passo 1: Cole os Links (Contas, Cases)</div>
+                    <textarea id="fg-links-input" placeholder="🔗 Cole a URL da Conta ou do Case aqui..."></textarea>
+                    <button id="fg-btn-carregar" class="fg-btn fg-btn-primary">⬇ CARREGAR DADOS P/ MEMÓRIA</button>
+                </div>
+
+                <div id="fg-step-2" style="display:none;">
+                    <div class="fg-step-label">Passo 2: Busque Instantaneamente</div>
+                    <input type="text" id="fg-keyword-input" class="fg-search-box" placeholder="🔎 Digite a palavra-chave..." autocomplete="off" />
+                    
+                    <button id="fg-btn-voltar" class="fg-btn fg-btn-neutral" style="margin-bottom: 10px;">+ CARREGAR MAIS REGISTROS</button>
+                </div>
+
+                <div class="fg-step-label">Registros Carregados</div>
+                <div id="fg-list">
+                    <div style="padding: 15px; color: #6b7280; font-size: 12px; text-align: center;">Nenhum registro carregado ainda.</div>
+                </div>
+            </div>
+            
+            <div id="fg-right">
+                <div class="fg-empty">
+                    <span style="font-size:30px;">📥</span>
+                    <strong>Siga o Passo 1 ao lado.</strong>
+                    Cole o link de uma Conta, e o sistema fará o download<br>do histórico de todos os Cases dela.
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const btnMinimized = document.createElement("button");
+    btnMinimized.id = "fg-search-minimized";
+    btnMinimized.innerHTML = "🔎 Restaurar Busca";
+    document.body.appendChild(btnMinimized);
+
+    document.getElementById("fg-btn-minimizar").onclick = () => { overlay.style.display = "none"; btnMinimized.style.display = "flex"; };
+    btnMinimized.onclick = () => { overlay.style.display = "flex"; btnMinimized.style.display = "none"; };
+
+    // =========================================================
+    // LÓGICA DE CARREGAMENTO (DOWNLOAD P/ MEMÓRIA)
+    // =========================================================
+    document.getElementById("fg-btn-carregar").onclick = async function() {
+        const btn = this;
+        const textoLinks = document.getElementById("fg-links-input").value;
+        const linhas = textoLinks.split("\n").map(x => x.trim()).filter(Boolean);
+        
+        if (!linhas.length) return alert("Cole pelo menos um link no campo.");
+        
+        btn.disabled = true;
+        btn.textContent = "⏳ BAIXANDO HISTÓRICO DO CRM...";
+        
+        resultados = [];
+        selecionadoIndex = null;
+        document.getElementById("fg-keyword-input").value = "";
+        termoBuscaEmails = "";
+        
+        const casosParaProcessar = new Map(); // Garante não repetir Case
+
+        // 1. Descobre todos os Cases a partir dos Links
+        for (let i = 0; i < linhas.length; i++) {
+            const info = extractInfo(linhas[i]);
+            if (!info.id) continue;
+
+            if (info.entity === "incident") {
+                try {
+                    const inc = await Xrm.WebApi.retrieveRecord("incident", info.id, "?$select=ticketnumber,title");
+                    casosParaProcessar.set(info.id, { id: info.id, entity: 'incident', ticket: inc.ticketnumber, title: inc.title });
+                } catch(e) {}
+            } 
+            else if (info.entity === "account" || info.entity === "contact") {
+                // Se for conta, salva a própria conta caso haja e-mail direto nela
+                let accName = "Conta";
+                try {
+                    if(info.entity === "account") {
+                        const acc = await Xrm.WebApi.retrieveRecord("account", info.id, "?$select=name,accountnumber");
+                        accName = acc.name || "Conta";
+                        casosParaProcessar.set(info.id, { id: info.id, entity: 'account', ticket: "Conta " + (acc.accountnumber||""), title: accName + " (E-mails Diretos)" });
+                    }
+                } catch(e) {}
+
+                // Busca TODOS OS CASES (Incident) atrelados à conta
+                try {
+                    const reqIncidents = await Xrm.WebApi.retrieveMultipleRecords("incident", `?$select=incidentid,ticketnumber,title&$filter=_customerid_value eq ${info.id}`);
+                    reqIncidents.entities.forEach(inc => {
+                        casosParaProcessar.set(inc.incidentid, { id: inc.incidentid, entity: 'incident', ticket: inc.ticketnumber, title: inc.title });
+                    });
+                } catch(e) { console.warn("Erro ao buscar cases da conta", e); }
+            }
+        }
+
+        // 2. Faz o Download dos E-mails de Todos os Cases Identificados
+        const arrCases = Array.from(casosParaProcessar.values());
+        for (let c of arrCases) {
+            btn.textContent = `⏳ BAIXANDO E-MAILS... (${resultados.length}/${arrCases.length})`;
+            try {
+                const queryEmails = `?$select=activityid,subject,createdon,directioncode,description&$filter=_regardingobjectid_value eq ${c.id}&$orderby=createdon desc`;
+                const reqEmails = await Xrm.WebApi.retrieveMultipleRecords("email", queryEmails);
+                
+                resultados.push({
+                    caseId: c.id,
+                    entityName: c.entity,
+                    ticket: c.ticket || "Sem Ticket",
+                    titulo: c.title || "(Sem Título)",
+                    todosEmails: reqEmails.entities || [],
+                    emailsEncontrados: [], // Será preenchido na hora da busca
+                    statusMsg: "Aguardando busca"
+                });
+            } catch(e) { console.warn("Erro ao ler email do case", c.id); }
+        }
+
+        btn.disabled = false;
+        btn.textContent = "⬇ CARREGAR DADOS P/ MEMÓRIA";
+        
+        // Troca o Layout para o Modo de Busca
+        document.getElementById("fg-step-1").style.display = "none";
+        document.getElementById("fg-step-2").style.display = "block";
+        document.getElementById("fg-keyword-input").focus();
+        
+        aplicarPesquisa(); // Roda pesquisa vazia pra resetar
+    };
+
+    document.getElementById("fg-btn-voltar").onclick = () => {
+        document.getElementById("fg-step-1").style.display = "block";
+        document.getElementById("fg-step-2").style.display = "none";
+    };
+
+    // =========================================================
+    // LÓGICA DE BUSCA OFFLINE (INSTANTÂNEA NA MEMÓRIA)
+    // =========================================================
+    document.getElementById("fg-keyword-input").addEventListener("input", function() {
+        termoBuscaEmails = normalizar(this.value).trim();
+        aplicarPesquisa();
+    });
+
+    function aplicarPesquisa() {
+        if (!termoBuscaEmails) {
+            resultados.forEach(r => {
+                r.emailsEncontrados = [];
+                r.statusMsg = `Lido: ${r.todosEmails.length} e-mails`;
+            });
+        } else {
+            resultados.forEach(r => {
+                let matches = [];
+                r.todosEmails.forEach(e => {
+                    const subjectN = normalizar(e.subject || "");
+                    const bodyN = normalizar(extrairTexto(e.description || ""));
+                    if (subjectN.includes(termoBuscaEmails) || bodyN.includes(termoBuscaEmails)) {
+                        matches.push(e);
+                    }
+                });
+                r.emailsEncontrados = matches;
+                r.statusMsg = matches.length > 0 ? `✅ ${matches.length} e-mail(s) com a palavra` : `❌ Não achou`;
+            });
+        }
+
+        renderLista();
+        
+        // Se houver itens na lista e nenhum estiver selecionado, auto-seleciona o primeiro que tem match
+        if (resultados.length > 0) {
+            const primeiroMatch = resultados.findIndex(r => r.emailsEncontrados.length > 0);
+            selecionadoIndex = primeiroMatch >= 0 ? primeiroMatch : 0;
+            renderDetalhe();
+        }
+    }
+
+    // =========================================================
+    // RENDERIZAÇÃO
+    // =========================================================
+    function renderLista() {
+        const listDiv = document.getElementById("fg-list");
+        
+        // Organiza a lista: Joga quem achou a palavra para o TOPO da lista
+        let listaOrdenada = [...resultados].sort((a, b) => {
+            if (a.emailsEncontrados.length > 0 && b.emailsEncontrados.length === 0) return -1;
+            if (a.emailsEncontrados.length === 0 && b.emailsEncontrados.length > 0) return 1;
+            return 0;
+        });
+
+        if (!listaOrdenada.length) {
+            listDiv.innerHTML = '<div style="padding: 15px; color: #6b7280; font-size: 12px; text-align: center;">Nenhum registro carregado.</div>';
+            return;
+        }
+
+        listDiv.innerHTML = listaOrdenada.map((r) => {
+            const indexOriginal = resultados.indexOf(r);
+            const isSelected = selecionadoIndex === indexOriginal;
+            
+            let classeSt = "st-wait";
+            if (termoBuscaEmails) {
+                classeSt = r.emailsEncontrados.length > 0 ? "st-ok" : "st-none";
+            }
+
+            return `
+                <div class="fg-item ${isSelected ? 'selected' : ''}" data-index="${indexOriginal}">
+                    <div class="fg-item-ticket">${eh(r.ticket)}</div>
+                    <div class="fg-item-title">${eh(r.titulo)}</div>
+                    <div class="fg-item-status ${classeSt}">${eh(r.statusMsg)}</div>
+                </div>
+            `;
+        }).join("");
+
+        listDiv.querySelectorAll(".fg-item").forEach(el => {
+            el.onclick = () => {
+                selecionadoIndex = Number(el.dataset.index);
+                renderLista();
+                renderDetalhe();
+            };
+        });
+    }
+
+    function renderDetalhe() {
+        const rightDiv = document.getElementById("fg-right");
+        if (selecionadoIndex === null || !resultados[selecionadoIndex]) return;
+
+        const item = resultados[selecionadoIndex];
+        
+        // Define quais e-mails serão listados na tela direita
+        const emailsParaExibir = termoBuscaEmails && item.emailsEncontrados.length > 0 
+            ? item.emailsEncontrados 
+            : item.todosEmails;
+
+        let msgAviso = "";
+        if (termoBuscaEmails) {
+            msgAviso = item.emailsEncontrados.length > 0 
+                ? `<div style="background:#d1fae5; color:#047857; padding:12px; border-radius:6px; margin-bottom:15px; font-size:14px; font-weight:bold; display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:20px;">✅</span> Palavra-chave encontrada em ${item.emailsEncontrados.length} e-mail(s) neste case.
+                   </div>`
+                : `<div style="background:#f3f4f6; color:#4b5563; padding:12px; border-radius:6px; margin-bottom:15px; font-size:14px; font-weight:bold; display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:20px;">❌</span> Palavra não encontrada. Exibindo histórico completo:
+                   </div>`;
+        }
+
+        let htmlEmails = emailsParaExibir.map((e, idx) => {
+            const isSaida = e.directioncode === true;
+            const badge = isSaida ? `<span class="fg-dir-out">📤 SAÍDA</span>` : `<span class="fg-dir-in">📥 ENTRADA</span>`;
+            const isMatch = termoBuscaEmails && item.emailsEncontrados.includes(e);
+            const cssMatch = isMatch ? "match" : "";
+            
+            return `
+                <div class="fg-email-card ${cssMatch}" data-idx="${item.todosEmails.indexOf(e)}">
+                    <div class="fg-email-header">
+                        <div class="fg-email-top">
+                            <div class="fg-email-subject">${eh(e.subject || "(Sem Assunto)")}</div>
+                            <div>${badge}</div>
+                        </div>
+                        <div class="fg-email-meta">
+                            <span>${eh(dataBR(e.createdon))}</span>
+                            <button class="fg-btn-open-email" onclick="event.stopPropagation(); Xrm.Navigation.openForm({ entityName: 'email', entityId: '${e.activityid}' })">ABRIR E-MAIL ↗</button>
+                        </div>
+                    </div>
+                    <div class="fg-email-body"></div>
+                </div>
+            `;
+        }).join("");
+
+        if (!emailsParaExibir.length) {
+            htmlEmails = `<div style="color:#6b7280; font-size:14px; text-align:center; padding:20px;">Este registro não possui e-mails.</div>`;
+        }
+
+        rightDiv.innerHTML = `
+            <div class="fg-detail-header">
+                <div class="fg-detail-ticket">
+                    ${eh(item.ticket)}
+                    <span class="fg-link-crm" onclick="Xrm.Navigation.openForm({ entityName: '${item.entityName}', entityId: '${item.caseId}' })">Abrir Registro Original ↗</span>
+                </div>
+                <div style="font-size: 16px; color: #4b5563; margin-top: 5px; font-weight:bold;">${eh(item.titulo)}</div>
+            </div>
+
+            ${msgAviso}
+
+            <div class="fg-email-list" id="fg-emails-container">
+                ${htmlEmails}
+            </div>
+        `;
+
+        // Logica dos iframes para injeção e highlight amarelo
+        const cards = rightDiv.querySelectorAll(".fg-email-card");
+        cards.forEach((card, i) => {
+            const header = card.querySelector(".fg-email-header");
+            const body = card.querySelector(".fg-email-body");
+            const emailData = item.todosEmails[card.dataset.idx];
+
+            header.onclick = () => {
+                const isOpen = card.classList.contains("open");
+                if (!isOpen && !body.innerHTML.includes("iframe")) {
+                    const iframe = document.createElement("iframe");
+                    iframe.className = "fg-email-frame";
+                    let htmlContent = emailData.description || "<p>(Corpo do email vazio)</p>";
+                    
+                    if (!htmlContent.includes("<html")) {
+                        htmlContent = `<html><head><style>body{font-family:sans-serif;font-size:14px;padding:15px;}</style></head><body>${htmlContent}</body></html>`;
+                    }
+                    
+                    // Highlight Amarelo da palavra chave
+                    if (termoBuscaEmails) {
+                        const regexKw = new RegExp(`(${termoBuscaEmails})`, 'gi');
+                        htmlContent = htmlContent.replace(regexKw, '<mark>$1</mark>');
+                    }
+                    
+                    iframe.srcdoc = htmlContent;
+                    body.appendChild(iframe);
+                }
+                card.classList.toggle("open");
+            };
+
+            // Auto-expande o primeiro se achou alguma coisa
+            if (i === 0 && termoBuscaEmails && item.emailsEncontrados.length > 0) {
+                header.click();
+            }
+        });
+    }
+
+    document.getElementById("fg-btn-fechar").onclick = () => {
+        overlay.remove();
+        style.remove();
+        btnMinimized.remove();
+    };
+
+})();
