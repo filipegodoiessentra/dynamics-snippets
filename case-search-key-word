@@ -42,9 +42,11 @@
     const normalizar = s => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     
     const extrairTexto = html => {
-        const tmp = document.createElement("div");
-        tmp.innerHTML = html || "";
-        return (tmp.textContent || tmp.innerText || "").toLowerCase();
+        try {
+            const tmp = document.createElement("div");
+            tmp.innerHTML = html || "";
+            return (tmp.textContent || tmp.innerText || "").toLowerCase();
+        } catch(e) { return ""; }
     };
 
     // 3. Injeção de CSS
@@ -91,6 +93,7 @@
         .st-ok { background: #d1fae5; color: #047857; }
         .st-none { background: #f3f4f6; color: #6b7280; }
         .st-wait { background: #e0e7ff; color: #3730a3; }
+        .st-err { background: #fee2e2; color: #b91c1c; }
         
         /* Painel Direito */
         #fg-right { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 30px; box-sizing: border-box; background: #fff; scroll-behavior: smooth; }
@@ -150,8 +153,8 @@
                 <div id="fg-step-2" style="display:none;">
                     <div class="fg-step-label">Passo 2: Filtre Instantaneamente</div>
                     
-                    <input type="text" id="fg-keyword-input" class="fg-search-box highlight" placeholder="🔎 Palavra-chave (opcional)..." autocomplete="off" />
-                    <input type="text" id="fg-attachment-input" class="fg-search-box" placeholder="📎 Filtrar anexo (ex: pdf, xml, boleto)..." autocomplete="off" />
+                    <input type="text" id="fg-keyword-input" class="fg-search-box highlight" placeholder="🔎 Palavra-chave no texto..." autocomplete="off" />
+                    <input type="text" id="fg-attachment-input" class="fg-search-box" placeholder="📎 Filtrar anexo (ex: pdf, xml)..." autocomplete="off" />
                     
                     <div class="fg-date-row">
                         <div>
@@ -208,7 +211,6 @@
         resultados = [];
         selecionadoIndex = null;
         
-        // Reseta os filtros
         document.getElementById("fg-keyword-input").value = "";
         document.getElementById("fg-attachment-input").value = "";
         document.getElementById("fg-date-start").value = "";
@@ -219,54 +221,70 @@
         dataFimFiltro = null;
         
         const casosParaProcessar = new Map(); 
+        const errosDeCarga = [];
 
         for (let i = 0; i < linhas.length; i++) {
-            const info = extractInfo(linhas[i]);
-            if (!info.id) continue;
+            const linha = linhas[i];
+            const info = extractInfo(linha);
+            
+            if (!info.id) {
+                errosDeCarga.push({ ticket: "-", titulo: linha, statusMsg: "Link inválido/sem ID", erro: true });
+                continue;
+            }
 
-            if (info.entity === "incident") {
-                try {
+            try {
+                if (info.entity === "incident") {
                     const inc = await Xrm.WebApi.retrieveRecord("incident", info.id, "?$select=ticketnumber,title");
                     casosParaProcessar.set(info.id, { id: info.id, entity: 'incident', ticket: inc.ticketnumber, title: inc.title });
-                } catch(e) {}
-            } 
-            else if (info.entity === "account" || info.entity === "contact") {
-                let accName = "Conta";
-                try {
-                    if(info.entity === "account") {
-                        const acc = await Xrm.WebApi.retrieveRecord("account", info.id, "?$select=name,accountnumber");
-                        accName = acc.name || "Conta";
-                        casosParaProcessar.set(info.id, { id: info.id, entity: 'account', ticket: "Conta " + (acc.accountnumber||""), title: accName + " (E-mails Diretos)" });
-                    }
-                } catch(e) {}
+                } 
+                else if (info.entity === "account" || info.entity === "contact") {
+                    let accName = "Conta";
+                    try {
+                        if(info.entity === "account") {
+                            const acc = await Xrm.WebApi.retrieveRecord("account", info.id, "?$select=name,accountnumber");
+                            accName = acc.name || "Conta";
+                            casosParaProcessar.set(info.id, { id: info.id, entity: 'account', ticket: "Conta " + (acc.accountnumber||""), title: accName + " (E-mails Diretos)" });
+                        }
+                    } catch(e) {}
 
-                try {
                     const reqIncidents = await Xrm.WebApi.retrieveMultipleRecords("incident", `?$select=incidentid,ticketnumber,title&$filter=_customerid_value eq ${info.id}`);
                     reqIncidents.entities.forEach(inc => {
                         casosParaProcessar.set(inc.incidentid, { id: inc.incidentid, entity: 'incident', ticket: inc.ticketnumber, title: inc.title });
                     });
-                } catch(e) { console.warn("Erro ao buscar cases da conta", e); }
+                }
+            } catch(e) {
+                errosDeCarga.push({ ticket: "-", titulo: linha, statusMsg: "Erro ao acessar CRM", erro: true });
             }
         }
 
         const arrCases = Array.from(casosParaProcessar.values());
-        for (let c of arrCases) {
-            btn.textContent = `⏳ BAIXANDO E-MAILS E ANEXOS... (${resultados.length + 1}/${arrCases.length})`;
+        for (let idxCase = 0; idxCase < arrCases.length; idxCase++) {
+            let c = arrCases[idxCase];
+            btn.textContent = `⏳ BAIXANDO E-MAILS E ANEXOS (${idxCase + 1}/${arrCases.length})...`;
+            
             try {
-                // Aqui puxamos se o email TEM anexo (hasattachments)
-                const queryEmails = `?$select=activityid,subject,createdon,directioncode,description,hasattachments&$filter=_regardingobjectid_value eq ${c.id}&$orderby=createdon desc`;
+                // Removida a dependência do campo hasattachments que causava erro 400
+                const queryEmails = `?$select=activityid,subject,createdon,directioncode,description&$filter=_regardingobjectid_value eq ${c.id}&$orderby=createdon desc`;
                 const reqEmails = await Xrm.WebApi.retrieveMultipleRecords("email", queryEmails);
                 const emails = reqEmails.entities || [];
 
-                // Faz o download da lista de anexos dos e-mails que possuem anexo
-                for (let e of emails) {
-                    if (e.hasattachments) {
+                if (emails.length > 0) {
+                    // Busca todos os anexos de forma rápida agrupando por e-mail de 15 em 15
+                    for (let k = 0; k < emails.length; k += 15) {
+                        const chunk = emails.slice(k, k + 15);
+                        const filterIds = chunk.map(e => `_objectid_value eq ${e.activityid}`).join(" or ");
+                        
                         try {
-                            const reqAtt = await Xrm.WebApi.retrieveMultipleRecords("activitymimeattachment", `?$select=filename,mimetype&$filter=_objectid_value eq ${e.activityid}`);
-                            e.attachmentsInfo = reqAtt.entities || [];
-                        } catch(err) { e.attachmentsInfo = []; }
-                    } else {
-                        e.attachmentsInfo = [];
+                            const queryAtt = `?$select=_objectid_value,filename,mimetype&$filter=${filterIds}`;
+                            const reqAtt = await Xrm.WebApi.retrieveMultipleRecords("activitymimeattachment", queryAtt);
+                            const anexosGerais = reqAtt.entities || [];
+                            
+                            chunk.forEach(e => {
+                                e.attachmentsInfo = anexosGerais.filter(a => a._objectid_value && a._objectid_value.toLowerCase() === e.activityid.toLowerCase());
+                            });
+                        } catch(err) {
+                            chunk.forEach(e => e.attachmentsInfo = []);
+                        }
                     }
                 }
                 
@@ -278,10 +296,20 @@
                     todosEmails: emails,
                     emailsEncontrados: [],
                     statusMsg: "Aguardando busca",
-                    dataMaisRecente: 0 
+                    dataMaisRecente: 0,
+                    erro: false
                 });
-            } catch(e) { console.warn("Erro ao ler email do case", c.id); }
+            } catch(e) { 
+                errosDeCarga.push({ caseId: c.id, ticket: c.ticket, titulo: c.title, statusMsg: "Erro ao baixar e-mails", erro: true });
+            }
         }
+
+        errosDeCarga.forEach(err => {
+            resultados.push({
+                caseId: err.caseId || null, entityName: null, ticket: err.ticket, titulo: err.titulo, 
+                todosEmails: [], emailsEncontrados: [], statusMsg: err.statusMsg, dataMaisRecente: 0, erro: true
+            });
+        });
 
         btn.disabled = false;
         btn.textContent = "⬇ CARREGAR DADOS P/ MEMÓRIA";
@@ -325,6 +353,8 @@
         const isFiltroAtivo = termoBuscaEmails || termoBuscaAnexo || dataInicioFiltro || dataFimFiltro;
 
         resultados.forEach(r => {
+            if (r.erro) return; 
+
             if (!isFiltroAtivo) {
                 r.emailsEncontrados = [];
                 r.statusMsg = `Lido: ${r.todosEmails.length} e-mails`;
@@ -375,10 +405,11 @@
         
         if (resultados.length > 0) {
             if (isFiltroAtivo) {
-                const primeiroMatch = resultados.findIndex(r => r.emailsEncontrados.length > 0);
+                const primeiroMatch = resultados.findIndex(r => !r.erro && r.emailsEncontrados.length > 0);
                 selecionadoIndex = primeiroMatch >= 0 ? primeiroMatch : null;
             } else {
-                selecionadoIndex = 0; 
+                const primeiroValido = resultados.findIndex(r => !r.erro);
+                selecionadoIndex = primeiroValido >= 0 ? primeiroValido : 0; 
             }
             if(selecionadoIndex !== null) renderDetalhe();
             else document.getElementById("fg-right").innerHTML = '<div class="fg-empty">Nenhum resultado para os filtros atuais.</div>';
@@ -395,6 +426,9 @@
         let listaIndicesOrdenados = resultados.map((r, i) => i).sort((idxA, idxB) => {
             const a = resultados[idxA];
             const b = resultados[idxB];
+
+            if (a.erro && !b.erro) return 1;
+            if (!a.erro && b.erro) return -1;
 
             if (isFiltroAtivo) {
                 if (a.emailsEncontrados.length > 0 && b.emailsEncontrados.length === 0) return -1;
@@ -413,7 +447,9 @@
             const isSelected = selecionadoIndex === idx;
             
             let classeSt = "st-wait";
-            if (isFiltroAtivo) {
+            if (r.erro) {
+                classeSt = "st-err";
+            } else if (isFiltroAtivo) {
                 classeSt = r.emailsEncontrados.length > 0 ? "st-ok" : "st-none";
             }
             
@@ -444,6 +480,12 @@
         if (selecionadoIndex === null || !resultados[selecionadoIndex]) return;
 
         const item = resultados[selecionadoIndex];
+        
+        if (item.erro) {
+            rightDiv.innerHTML = `<div class="fg-empty" style="color:#b91c1c;">Erro ao consultar: O link falhou ou você não tem acesso a este registro.<br>Verifique se o link colado está correto.</div>`;
+            return;
+        }
+
         const isFiltroAtivo = termoBuscaEmails || termoBuscaAnexo || dataInicioFiltro || dataFimFiltro;
         
         const emailsParaExibir = isFiltroAtivo && item.emailsEncontrados.length > 0 
@@ -467,7 +509,6 @@
             const isMatch = isFiltroAtivo && item.emailsEncontrados.includes(e);
             const cssMatch = isMatch ? "match" : "";
             
-            // Tratamento das pílulas de anexo
             let htmlAnexos = "";
             if (e.attachmentsInfo && e.attachmentsInfo.length > 0) {
                 const badgesAt = e.attachmentsInfo.map(a => {
