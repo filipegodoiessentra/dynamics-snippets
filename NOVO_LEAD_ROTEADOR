@@ -55,19 +55,31 @@
     }
 
     // =========================================================
-    // FUNÇÃO PARA COPIAR PARA O CTRL+C
+    // FUNÇÃO BLINDADA PARA COPIAR PARA O CTRL+C
     // =========================================================
     async function copiarParaAreaDeTransferencia(texto) {
+        if (!texto) return;
         try {
+            // 1ª Tentativa: Clipboard API moderna
             await navigator.clipboard.writeText(texto);
-            console.log("✅ Copiado para área de transferência:", texto);
+            console.log("✅ Copiado (Clipboard API):", texto);
         } catch (err) {
-            const el = document.createElement('textarea');
-            el.value = texto;
-            document.body.appendChild(el);
-            el.select();
-            document.execCommand('copy');
-            document.body.removeChild(el);
+            try {
+                // 2ª Tentativa: Método legado oculto
+                const el = document.createElement('textarea');
+                el.value = texto;
+                el.setAttribute('readonly', '');
+                el.style.position = 'absolute';
+                el.style.left = '-9999px';
+                document.body.appendChild(el);
+                el.select();
+                document.execCommand('copy');
+                document.body.removeChild(el);
+                console.log("✅ Copiado (execCommand):", texto);
+            } catch (err2) {
+                // 3ª Tentativa: Se o navegador bloquear tudo, exibe um prompt manual
+                prompt("⚠️ O navegador bloqueou a cópia automática.\n\nPressione Ctrl+C para copiar o número do Lead:", texto);
+            }
         }
     }
 
@@ -134,7 +146,7 @@
     try {
         console.clear();
         console.log("====================================");
-        console.log("🚀 LEAD & CASE UNIFICADO - V12.1 (Sem Cristiana)");
+        console.log("🚀 LEAD & CASE UNIFICADO - V12.2 (Cópia Blindada)");
         console.log("====================================");
 
         // =========================================================
@@ -166,8 +178,6 @@
         // =========================================================
         // 2. CONFIGURAÇÕES GERAIS
         // =========================================================
-        
-        // Cristiana Roseto removida do Round Robin
         const VENDEDORES = [
             { nome: "Pablo Silva", id: "67f1a84e-7471-f011-b4cc-000d3adb1307" },
             { nome: "Matheus Silva", id: "d46857cf-606e-f011-b4cc-6045bde0e1bb" },
@@ -268,7 +278,6 @@
         const leadId = lead.id.replace(/[{}]/g, "");
         localStorage.setItem("lead_rr", proximoIndice);
 
-        // Relaciona email original ao lead inicialmente (apenas para o ConvertActivity funcionar certinho)
         await Xrm.WebApi.updateRecord("email", emailOriginalId, {
             "regardingobjectid_lead@odata.bind": `/leads(${leadId})`
         });
@@ -280,8 +289,9 @@
         // 7. DESVIO DE FLUXO (EXISTENTE)
         // =========================================================
         if (emailOuDominioExiste) {
+            // Aciona a cópia (ou exibe o prompt se falhar)
             await copiarParaAreaDeTransferencia(leadNumber);
-            alert(`⚠️ CLIENTE JÁ EXISTENTE NO BANCO!\n\nLead Criado: ${leadNumber} (Já copiado no seu Ctrl+C)\nVendedor: ${vendedor.nome}\n\nVocê será redirecionado para a ferramenta externa.`);
+            alert(`⚠️ CLIENTE JÁ EXISTENTE NO BANCO!\n\nLead Criado: ${leadNumber}\nVendedor: ${vendedor.nome}\n\nVocê será redirecionado para a ferramenta externa.`);
             window.open("https://filipegodoiessentra.github.io/emailleads/", "_blank");
             return; 
         }
