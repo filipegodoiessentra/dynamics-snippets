@@ -12,7 +12,9 @@
         d7: "Olá!\n\nAinda não recebi o seu retorno. Continuo à disposição para ajudar com a sua solicitação. Assim que possível, por favor, me retorne com os dados solicitados.\n\nQualquer dúvida, é só me chamar.\n\nAtenciosamente,",
         d15: "Olá!\n\nTentei contato algumas vezes nos últimos dias mas não tive sucesso. O seu projeto/solicitação ainda é uma prioridade no momento?\n\nCaso precisem de mais tempo, basta me avisar.\n\nAtenciosamente,",
         d30: "Olá!\n\nImagino que a rotina esteja bem corrida. Como não tivemos retorno nas últimas semanas, estou pausando os contatos proativos sobre esta solicitação por enquanto.\n\nQuando for o melhor momento para retomar, basta responder a este e-mail.\n\nAtenciosamente,",
-        d60: "Olá!\n\nComo não tivemos novidades nos últimos meses, estou procedendo com o encerramento desta solicitação em nosso sistema.\n\nCaso voltem a ter demanda no futuro, fiquem à vontade para nos contatar novamente. Será um grande prazer ajudar!\n\nAtenciosamente,"
+        d60: "Olá!\n\nComo não tivemos novidades nos últimos meses, estou procedendo com o encerramento desta solicitação em nosso sistema.\n\nCaso voltem a ter demanda no futuro, fiquem à vontade para nos contatar novamente. Será um grande prazer ajudar!\n\nAtenciosamente,",
+        // NOVO: FUP Pós-Vendedor
+        fupVend: "Olá!\n\nVerifiquei que a sua solicitação foi direcionada para a nossa equipe de vendas há alguns dias. Gostaria de saber se o seu atendimento já foi concluído ou se você ainda precisa de algum suporte da nossa parte.\n\nSigo à disposição caso precise de algo mais!\n\nAtenciosamente,"
     };
 
     // 2. Variáveis de Estado
@@ -132,6 +134,9 @@
         .fg-templates-buttons { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
         .fg-btn-copy { background: #fff; border: 1px solid #d97706; color: #b45309; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .fg-btn-copy:hover { background: #d97706; color: #fff; }
+        .fg-btn-copy-vend { background: #fff; border: 1px solid #4f46e5; color: #4f46e5; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .fg-btn-copy-vend:hover { background: #4f46e5; color: #fff; }
+        
         .fg-copy-feedback { font-size: 12px; color: #047857; font-weight: bold; margin-left: 10px; opacity: 0; transition: 0.3s; background: #d1fae5; padding: 4px 8px; border-radius: 4px; }
 
         /* Emails */
@@ -268,11 +273,13 @@
 
         resultados.forEach(r => {
             const st = r.status.toUpperCase();
-            if (st.includes("VENDEDOR")) vendedor++;
-            else if (st.includes("FUP") || st.includes("FOLLOW UP") || st.includes("D+")) {
+            
+            // Prioriza FUP, senão Vendedor (para a tag FUP Vendas entrar em FUP)
+            if (st.includes("FUP") || st.includes("FOLLOW UP") || st.includes("D+")) {
                 fup++;
                 if (isVencido(r.fupDate)) vencidos++;
             }
+            else if (st.includes("VENDEDOR")) vendedor++;
             else if (st.includes("NÃO RESPONDEU") || st.includes("SEM RESPOSTA")) semResposta++;
             else if (st.includes("RESPONDEU") || st.includes("POSSUI RESPOSTA")) comResposta++;
         });
@@ -444,9 +451,11 @@
             
             let corStatus = "";
             const stUpper = (r.status || "").toUpperCase();
+            
+            // Ordem: FUP > VENDEDOR > OUTROS para pintar a tag
             if (stUpper.includes("ERRO")) corStatus = "st-err";
-            else if (stUpper.includes("VENDEDOR")) corStatus = "st-vend";
             else if (stUpper.includes("FUP") || stUpper.includes("FOLLOW UP") || stUpper.includes("D+")) corStatus = "st-fup";
+            else if (stUpper.includes("VENDEDOR")) corStatus = "st-vend";
             else if (stUpper.includes("NÃO RESPONDEU") || stUpper.includes("SEM RESPOSTA")) corStatus = "st-nresp";
             else if (stUpper.includes("RESPONDEU") || stUpper.includes("POSSUI RESPOSTA")) corStatus = "st-resp";
 
@@ -533,6 +542,7 @@
                     <button class="fg-btn-copy" data-template="d15" data-fup="⏰ FUP D+15" data-days="15">D+15 (3º FUP)</button>
                     <button class="fg-btn-copy" data-template="d30" data-fup="⏰ FUP D+30" data-days="30">D+30 (4º FUP)</button>
                     <button class="fg-btn-copy" data-template="d60" data-fup="⏰ FUP D+60" data-days="60">D+60 (Final)</button>
+                    <button class="fg-btn-copy fg-btn-copy-vend" data-template="fupVend" data-fup="⏰ FUP Vendas" data-days="3">FUP Pós-Vendas</button>
                     <span id="fg-copy-feedback" class="fg-copy-feedback">✅ Copiado e Agendado!</span>
                 </div>
             </div>
@@ -622,7 +632,7 @@
             // Auto-preencher a Data Base com o E-mail mais antigo (Recebimento do Lead)
             const baseInput = document.getElementById("fg-base-date");
             if (baseInput && !baseInput.value) {
-                const oldestEmail = emails[emails.length - 1]; // Vem ordenado decrescente, o ultimo é o mais velho
+                const oldestEmail = emails[emails.length - 1]; 
                 if (oldestEmail && oldestEmail.createdon) {
                     const dt = new Date(oldestEmail.createdon);
                     const yr = dt.getFullYear();
@@ -725,7 +735,6 @@
                     card.classList.toggle("open");
                 };
 
-                // Auto-expande o primeiro email
                 if (i === 0) header.click();
             });
 
