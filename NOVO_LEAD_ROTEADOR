@@ -1,0 +1,397 @@
+(async function () {
+    // =========================================================
+    // FUNÇÃO PARA LER EXCEL (PROMPT DE UPLOAD)
+    // =========================================================
+    async function carregarPlanilha() {
+        return new Promise((resolve, reject) => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.xlsx, .xls, .csv';
+            input.style.display = 'none';
+            document.body.appendChild(input);
+
+            input.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) {
+                    document.body.removeChild(input);
+                    return reject("Nenhum arquivo selecionado.");
+                }
+
+                console.log("📥 Carregando leitor de Excel...");
+                if (!window.XLSX) {
+                    await new Promise((res, rej) => {
+                        const script = document.createElement('script');
+                        script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+                        script.onload = res;
+                        script.onerror = rej;
+                        document.head.appendChild(script);
+                    });
+                }
+
+                console.log("📊 Lendo arquivo...");
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = new Uint8Array(event.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const primeiraAba = workbook.Sheets[workbook.SheetNames[0]];
+                        const linhas = XLSX.utils.sheet_to_json(primeiraAba, { header: 1 });
+                        
+                        const emails = linhas
+                            .map(linha => linha[3])
+                            .filter(val => val && typeof val === 'string' && val.includes('@'))
+                            .map(email => email.trim().toLowerCase());
+
+                        document.body.removeChild(input);
+                        resolve(emails);
+                    } catch (err) {
+                        reject("Erro ao processar a planilha: " + err);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            });
+            input.click();
+        });
+    }
+
+    // =========================================================
+    // FUNÇÃO PARA COPIAR PARA O CTRL+C
+    // =========================================================
+    async function copiarParaAreaDeTransferencia(texto) {
+        try {
+            await navigator.clipboard.writeText(texto);
+            console.log("✅ Copiado para área de transferência:", texto);
+        } catch (err) {
+            const el = document.createElement('textarea');
+            el.value = texto;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+        }
+    }
+
+    // =========================================================
+    // FUNÇÃO PARA CRIAR O BOTÃO FLUTUANTE DE FECHAR CASE
+    // =========================================================
+    function criarBotaoConcluir(caseId) {
+        const btn = document.createElement("button");
+        btn.innerHTML = "✅ Concluir e Fechar Case";
+        btn.style.position = "fixed";
+        btn.style.top = "20px";
+        btn.style.right = "20px";
+        btn.style.zIndex = "999999";
+        btn.style.padding = "15px 20px";
+        btn.style.backgroundColor = "#0078D4";
+        btn.style.color = "white";
+        btn.style.border = "none";
+        btn.style.borderRadius = "8px";
+        btn.style.fontSize = "16px";
+        btn.style.fontWeight = "bold";
+        btn.style.boxShadow = "0 4px 6px rgba(0,0,0,0.3)";
+        btn.style.cursor = "pointer";
+        btn.style.transition = "background-color 0.3s";
+
+        btn.onmouseover = () => btn.style.backgroundColor = "#005a9e";
+        btn.onmouseout = () => btn.style.backgroundColor = "#0078D4";
+
+        btn.onclick = async function () {
+            btn.innerHTML = "⏳ Fechando Case...";
+            btn.disabled = true;
+            btn.style.backgroundColor = "#555";
+
+            try {
+                const closeIncidentRequest = {
+                    IncidentResolution: { subject: "Atendimento inicial concluído", "incidentid@odata.bind": `/incidents(${caseId})` },
+                    Status: 971970059,
+                    getMetadata: function () {
+                        return {
+                            boundParameter: null,
+                            parameterTypes: {
+                                IncidentResolution: { typeName: "mscrm.incidentresolution", structuralProperty: 5 },
+                                Status: { typeName: "Edm.Int32", structuralProperty: 1 }
+                            },
+                            operationType: 0, operationName: "CloseIncident"
+                        };
+                    }
+                };
+                await Xrm.WebApi.online.execute(closeIncidentRequest);
+                alert("✅ Case fechado com sucesso!\nAutomação totalmente concluída.");
+                btn.remove(); 
+            } catch (err) {
+                console.error(err);
+                alert("❌ Erro ao fechar o Case: " + err.message);
+                btn.innerHTML = "❌ Tentar Novamente";
+                btn.disabled = false;
+                btn.style.backgroundColor = "#D83B01";
+            }
+        };
+
+        const doc = (window.top || window).document;
+        doc.body.appendChild(btn);
+    }
+
+    try {
+        console.clear();
+        console.log("====================================");
+        console.log("🚀 LEAD & CASE UNIFICADO - V12.1 (Sem Cristiana)");
+        console.log("====================================");
+
+        // =========================================================
+        // 1. GERENCIAMENTO DA PLANILHA (CACHE OU NOVO UPLOAD)
+        // =========================================================
+        let baseLegadaEmails = [];
+        const cacheEmails = localStorage.getItem('baseLegadaEmailsCache');
+        let usarCache = false;
+
+        if (cacheEmails) {
+            usarCache = confirm("Uma base de e-mails já está salva.\n\nDeseja usar a planilha salva? \n(OK = Usar salva | Cancelar = Subir planilha nova)");
+        }
+
+        if (usarCache) {
+            baseLegadaEmails = JSON.parse(cacheEmails);
+            console.log(`✅ Base em cache carregada! ${baseLegadaEmails.length} emails.`);
+        } else {
+            try {
+                console.log("⏳ Aguardando seleção da nova planilha...");
+                baseLegadaEmails = await carregarPlanilha();
+                localStorage.setItem('baseLegadaEmailsCache', JSON.stringify(baseLegadaEmails));
+                console.log(`✅ Nova planilha carregada! ${baseLegadaEmails.length} emails.`);
+            } catch (err) {
+                alert("❌ Upload cancelado ou falhou.\n\nDetalhe: " + err);
+                return;
+            }
+        }
+
+        // =========================================================
+        // 2. CONFIGURAÇÕES GERAIS
+        // =========================================================
+        
+        // Cristiana Roseto removida do Round Robin
+        const VENDEDORES = [
+            { nome: "Pablo Silva", id: "67f1a84e-7471-f011-b4cc-000d3adb1307" },
+            { nome: "Matheus Silva", id: "d46857cf-606e-f011-b4cc-6045bde0e1bb" },
+            { nome: "Danilo Ageje", id: "e085d30c-16bb-f111-aaaf-70a8a580a75b" },
+            { nome: "Nicole Chiva", id: "266b2bd9-25bc-f111-aaaf-e4fb1ef6e913" }
+        ];
+
+        const DOMINIOS_PUBLICOS = [
+            "@gmail.com", "@hotmail.com", "@outlook.com", "@yahoo.com", 
+            "@yahoo.com.br", "@live.com", "@icloud.com", "@bol.com.br", "@uol.com.br", "@terra.com.br"
+        ];
+
+        const QUEUE_ID = "{1DC95BFF-6E36-EC11-8C64-000D3ABA5426}";
+        const CAMPANHA_ID = "f98d08d3-191e-f111-8341-000d3ab84eef";
+        const LEAD_SOURCE = 810600002;
+        const ACCOUNT_SEM_REMETENTE = "F52D46D1-2392-F011-B4CC-002248A2DAEF";
+        const CONTACT_SEM_REMETENTE = "0F5AA6E9-2392-F011-B4CC-002248A2DAEF";
+        const SUBJECT_QUOTE_REQUEST = "B5C78454-4AAA-EA11-A812-000D3A86A8CF";
+
+        // =========================================================
+        // 3. LOCALIZAR EMAIL ABERTO NO POPUP
+        // =========================================================
+        const emailsEncontrados = [];
+        for (let i = 0; i < window.frames.length; i++) {
+            try {
+                const frame = window.frames[i];
+                const entity = frame.Xrm?.Page?.data?.entity?.getEntityName?.();
+                const id = frame.Xrm?.Page?.data?.entity?.getId?.();
+                if (entity === "email" && id) {
+                    emailsEncontrados.push({ indice: i, frame: frame, id: id.replace(/[{}]/g, "") });
+                }
+            } catch (e) {} 
+        }
+
+        if (emailsEncontrados.length === 0) {
+            alert("❌ Nenhum email aberto foi encontrado.\n\nAbra o email no popup e execute o script novamente."); return;
+        }
+
+        const emailAberto = emailsEncontrados[emailsEncontrados.length - 1];
+        const emailFrame = emailAberto.frame;
+        const emailOriginalId = emailAberto.id;
+
+        // =========================================================
+        // 4. EXTRAIR DADOS DO EMAIL
+        // =========================================================
+        const texto = emailFrame.document.body.innerText;
+        if (!texto) { alert("❌ Não foi possível ler o conteúdo do email."); return; }
+
+        const nomeCompleto = texto.match(/Nome\s+([^\n]+)/)?.[1]?.trim() || "";
+        const emailExtraido = texto.match(/E-mail\s+([^\n]+)/)?.[1]?.trim().toLowerCase() || "";
+        const telefone = texto.match(/Telefone\s+([^\n]+)/)?.[1]?.trim() || "";
+        const descricao = texto.match(/Escreva aqui o que você precisa\.\s+([^\n]+)/)?.[1]?.trim() || "";
+        const cidade = texto.match(/Cidade do Usuário\s+([^\n]+)/)?.[1]?.trim() || "";
+        const estado = texto.match(/Região do Usuário\s+([^\n]+)/)?.[1]?.trim() || "";
+
+        if (!nomeCompleto || !emailExtraido) { alert("❌ Nome ou Email não encontrados no corpo do email."); return; }
+
+        // =========================================================
+        // 5. VERIFICAR EXISTÊNCIA NA BASE
+        // =========================================================
+        const dominioExtraido = emailExtraido.substring(emailExtraido.indexOf("@"));
+        let emailOuDominioExiste = false;
+
+        if (baseLegadaEmails.includes(emailExtraido)) {
+            emailOuDominioExiste = true;
+        } else if (!DOMINIOS_PUBLICOS.includes(dominioExtraido)) {
+            if (baseLegadaEmails.some(emailBD => emailBD.endsWith(dominioExtraido))) {
+                emailOuDominioExiste = true;
+            }
+        }
+
+        // =========================================================
+        // 6. ROUND ROBIN E PREPARAÇÃO DO LEAD
+        // =========================================================
+        const partes = nomeCompleto.trim().split(/\s+/);
+        const firstname = partes.shift();
+        const lastname = partes.join(" ") || firstname;
+
+        let indice = Number(localStorage.getItem("lead_rr") || 0);
+        if (Number.isNaN(indice) || indice < 0 || indice >= VENDEDORES.length) indice = 0;
+        const vendedor = VENDEDORES[indice];
+        const proximoIndice = (indice + 1) % VENDEDORES.length;
+        
+        const lead = await Xrm.WebApi.createRecord("lead", {
+            firstname: firstname,
+            lastname: lastname,
+            companyname: nomeCompleto,
+            emailaddress1: emailExtraido,
+            telephone1: telefone,
+            description: descricao,
+            address1_city: cidade,
+            address1_stateorprovince: estado,
+            cuk_leadsource: LEAD_SOURCE,
+            "campaignid@odata.bind": `/campaigns(${CAMPANHA_ID})`,
+            "ownerid@odata.bind": `/systemusers(${vendedor.id})`
+        });
+        
+        const leadId = lead.id.replace(/[{}]/g, "");
+        localStorage.setItem("lead_rr", proximoIndice);
+
+        // Relaciona email original ao lead inicialmente (apenas para o ConvertActivity funcionar certinho)
+        await Xrm.WebApi.updateRecord("email", emailOriginalId, {
+            "regardingobjectid_lead@odata.bind": `/leads(${leadId})`
+        });
+
+        const leadRetrieve = await Xrm.WebApi.retrieveRecord("lead", leadId, "?$select=cuk_leadid");
+        const leadNumber = leadRetrieve.cuk_leadid || "";
+
+        // =========================================================
+        // 7. DESVIO DE FLUXO (EXISTENTE)
+        // =========================================================
+        if (emailOuDominioExiste) {
+            await copiarParaAreaDeTransferencia(leadNumber);
+            alert(`⚠️ CLIENTE JÁ EXISTENTE NO BANCO!\n\nLead Criado: ${leadNumber} (Já copiado no seu Ctrl+C)\nVendedor: ${vendedor.nome}\n\nVocê será redirecionado para a ferramenta externa.`);
+            window.open("https://filipegodoiessentra.github.io/emailleads/", "_blank");
+            return; 
+        }
+
+        // =========================================================
+        // 8. FLUXO NOVO: CONVERTER PARA CASE E MOVER OS EMAILS
+        // =========================================================
+        console.log("🚀 Convertendo Email em Case...");
+        const convertRequest = {
+            ActivityId: emailOriginalId,
+            ActivityEntityName: "email",
+            CreateCampaignResponse: false,
+            TargetEntityName: "incident",
+            TargetEntity: {
+                "@odata.type": "#Microsoft.Dynamics.CRM.incident",
+                "customerid_account@odata.bind": `/accounts(${ACCOUNT_SEM_REMETENTE})`,
+                "primarycontactid@odata.bind": `/contacts(${CONTACT_SEM_REMETENTE})`
+            },
+            getMetadata: function () {
+                return {
+                    boundParameter: null,
+                    parameterTypes: {
+                        ActivityId: { typeName: "Edm.String", structuralProperty: 1 },
+                        ActivityEntityName: { typeName: "Edm.String", structuralProperty: 1 },
+                        CreateCampaignResponse: { typeName: "Edm.Boolean", structuralProperty: 1 },
+                        TargetEntity: { typeName: "mscrm.incident", structuralProperty: 5 },
+                        TargetEntityName: { typeName: "Edm.String", structuralProperty: 1 }
+                    },
+                    operationType: 0, operationName: "ConvertActivity"
+                };
+            }
+        };
+
+        const responseCase = await Xrm.WebApi.online.execute(convertRequest);
+        if (!responseCase.ok) throw new Error("ConvertActivity falhou.");
+        const resultCase = await responseCase.json();
+        const caseId = resultCase.RecordId?.replace(/[{}]/g, "");
+
+        await Xrm.WebApi.updateRecord("incident", caseId, {
+            title: `Novo Lead Essentra! ${leadNumber}`,
+            "subjectid@odata.bind": `/subjects(${SUBJECT_QUOTE_REQUEST})`,
+            "ownerid@odata.bind": `/systemusers(${vendedor.id})`
+        });
+
+        console.log("🔗 Movendo o e-mail original para o Case...");
+        await Xrm.WebApi.updateRecord("email", emailOriginalId, {
+            "regardingobjectid_incident@odata.bind": `/incidents(${caseId})`
+        });
+
+        // =========================================================
+        // 9. CRIAR EMAIL DE RESPOSTA VINCULADO AO CASE
+        // =========================================================
+        console.log("📧 Criando email de resposta vinculado ao Case...");
+        const emailResposta = await Xrm.WebApi.createRecord("email", {
+            subject: "Contato Essentra",
+            description: `Olá ${firstname},<br><br>Muito obrigado pelo seu contato com a Essentra Components.<br><br>Recebemos sua solicitação e para que possamos dar continuidade ao atendimento, poderia nos informar o CNPJ da empresa?<br><br>Assim que recebermos essa informação, retornaremos o mais breve possível.<br><br>Atenciosamente,<br><br>${vendedor.nome}`,
+            "regardingobjectid_incident@odata.bind": `/incidents(${caseId})`
+        });
+        const emailRespostaId = emailResposta.id.replace(/[{}]/g, "");
+
+        await Xrm.Navigation.openForm({ entityName: "email", entityId: emailRespostaId });
+
+        // =========================================================
+        // 10. PREENCHER TO/FROM E GERAR BOTÃO DE CONCLUSÃO
+        // =========================================================
+        let tentativas = 0;
+        const localizarEmailResposta = setInterval(async () => {
+            tentativas++;
+            let frameResposta = null;
+
+            for (let i = 0; i < window.frames.length; i++) {
+                try {
+                    const frame = window.frames[i];
+                    const entity = frame.Xrm?.Page?.data?.entity?.getEntityName?.();
+                    const id = frame.Xrm?.Page?.data?.entity?.getId?.()?.replace(/[{}]/g, "")?.toLowerCase();
+                    if (entity === "email" && id === emailRespostaId.toLowerCase()) {
+                        frameResposta = frame;
+                        break;
+                    }
+                } catch (e) {}
+            }
+
+            if (!frameResposta) {
+                if (tentativas >= 15) {
+                    clearInterval(localizarEmailResposta);
+                    criarBotaoConcluir(caseId); 
+                    alert(`✅ Lead e Case criados!\n\nPreencha TO/FROM manualmente, envie o email e clique no Botão Flutuante (canto superior direito) para fechar o Case.`);
+                }
+                return;
+            }
+
+            clearInterval(localizarEmailResposta);
+
+            try {
+                const emailXrm = frameResposta.Xrm;
+                emailXrm.Page.getAttribute("to").setValue([{ entityType: "unresolvedaddress", id: "{00000000-0000-0000-0000-000000000000}", name: emailExtraido }]);
+                emailXrm.Page.getAttribute("from").setValue([{ entityType: "queue", id: QUEUE_ID, name: "CBR Sales" }]);
+                await emailXrm.Page.data.save();
+
+                criarBotaoConcluir(caseId);
+
+                alert(`✅ TUDO PRONTO NO CASE!\n\n1. Envie este e-mail normalmente.\n2. Após enviar, CLIQUE NO BOTÃO AZUL no canto superior direito para concluir o Case.`);
+            } catch (erroEmail) {
+                criarBotaoConcluir(caseId);
+                alert(`✅ Rascunho criado, mas ocorreu erro no TO/FROM.\nCorrija, envie o email e clique no botão azul para fechar o Case.`);
+            }
+        }, 1000);
+
+    } catch (erro) {
+        console.error("❌ ERRO GERAL:", erro);
+        alert(`❌ Erro durante a execução:\n${erro.message || erro}\nVerifique o Console.`);
+    }
+})();
