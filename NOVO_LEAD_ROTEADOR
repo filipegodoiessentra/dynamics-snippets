@@ -60,12 +60,10 @@
     async function copiarParaAreaDeTransferencia(texto) {
         if (!texto) return;
         try {
-            // 1ª Tentativa: Clipboard API moderna
             await navigator.clipboard.writeText(texto);
             console.log("✅ Copiado (Clipboard API):", texto);
         } catch (err) {
             try {
-                // 2ª Tentativa: Método legado oculto
                 const el = document.createElement('textarea');
                 el.value = texto;
                 el.setAttribute('readonly', '');
@@ -77,7 +75,6 @@
                 document.body.removeChild(el);
                 console.log("✅ Copiado (execCommand):", texto);
             } catch (err2) {
-                // 3ª Tentativa: Se o navegador bloquear tudo, exibe um prompt manual
                 prompt("⚠️ O navegador bloqueou a cópia automática.\n\nPressione Ctrl+C para copiar o número do Lead:", texto);
             }
         }
@@ -87,7 +84,14 @@
     // FUNÇÃO PARA CRIAR O BOTÃO FLUTUANTE DE FECHAR CASE
     // =========================================================
     function criarBotaoConcluir(caseId) {
+        const doc = (window.top || window).document;
+        
+        if (doc.getElementById("btnFecharCaseEssentra")) {
+            return;
+        }
+
         const btn = document.createElement("button");
+        btn.id = "btnFecharCaseEssentra"; 
         btn.innerHTML = "✅ Concluir e Fechar Case";
         btn.style.position = "fixed";
         btn.style.top = "20px";
@@ -139,35 +143,51 @@
             }
         };
 
-        const doc = (window.top || window).document;
         doc.body.appendChild(btn);
     }
 
     try {
         console.clear();
         console.log("====================================");
-        console.log("🚀 LEAD & CASE UNIFICADO - V12.2 (Cópia Blindada)");
+        console.log("🚀 LEAD & CASE UNIFICADO - V13.1 (Com Relatório)");
         console.log("====================================");
 
         // =========================================================
-        // 1. GERENCIAMENTO DA PLANILHA (CACHE OU NOVO UPLOAD)
+        // 1. GERENCIAMENTO DA PLANILHA (CACHE COM DATA)
         // =========================================================
         let baseLegadaEmails = [];
-        const cacheEmails = localStorage.getItem('baseLegadaEmailsCache');
+        const cacheString = localStorage.getItem('baseLegadaEmailsCache');
         let usarCache = false;
 
-        if (cacheEmails) {
-            usarCache = confirm("Uma base de e-mails já está salva.\n\nDeseja usar a planilha salva? \n(OK = Usar salva | Cancelar = Subir planilha nova)");
+        if (cacheString) {
+            try {
+                const cacheData = JSON.parse(cacheString);
+                
+                if (Array.isArray(cacheData)) {
+                    usarCache = confirm(`Uma base de e-mails já está salva no navegador.\n\nDeseja usar esta base? \n(OK = Usar salva | Cancelar = Subir planilha nova)`);
+                    if (usarCache) baseLegadaEmails = cacheData;
+                } else {
+                    usarCache = confirm(`Uma base foi atualizada em: ${cacheData.dataCarga}\nContém ${cacheData.emails.length.toLocaleString('pt-BR')} e-mails registrados.\n\nDeseja usar esta base? \n(OK = Usar salva | Cancelar = Subir planilha nova)`);
+                    if (usarCache) baseLegadaEmails = cacheData.emails;
+                }
+            } catch(e) {
+                console.warn("Erro ao ler cache:", e);
+            }
         }
 
         if (usarCache) {
-            baseLegadaEmails = JSON.parse(cacheEmails);
             console.log(`✅ Base em cache carregada! ${baseLegadaEmails.length} emails.`);
         } else {
             try {
                 console.log("⏳ Aguardando seleção da nova planilha...");
                 baseLegadaEmails = await carregarPlanilha();
-                localStorage.setItem('baseLegadaEmailsCache', JSON.stringify(baseLegadaEmails));
+                
+                const novoCache = {
+                    dataCarga: new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR'),
+                    emails: baseLegadaEmails
+                };
+                localStorage.setItem('baseLegadaEmailsCache', JSON.stringify(novoCache));
+                
                 console.log(`✅ Nova planilha carregada! ${baseLegadaEmails.length} emails.`);
             } catch (err) {
                 alert("❌ Upload cancelado ou falhou.\n\nDetalhe: " + err);
@@ -286,10 +306,29 @@
         const leadNumber = leadRetrieve.cuk_leadid || "";
 
         // =========================================================
-        // 7. DESVIO DE FLUXO (EXISTENTE)
+        // 7. SALVAR HISTÓRICO LOCAL (PARA O RELATÓRIO)
+        // =========================================================
+        const historico = JSON.parse(localStorage.getItem("lead_log") || "[]");
+        historico.push({
+            dataCriacao: new Date().toISOString(),
+            leadId: leadId,
+            emailOriginalId: emailOriginalId,
+            emailRespostaId: "", // Será preenchido depois no CRM, se não for existente
+            nome: nomeCompleto,
+            email: emailExtraido,
+            telefone: telefone,
+            vendedor: vendedor.nome,
+            vendedorId: vendedor.id,
+            status: emailOuDominioExiste ? "Existente" : "Novo",
+            versao: "13.1"
+        });
+        localStorage.setItem("lead_log", JSON.stringify(historico));
+        console.log("✅ Log salvo para o relatório.");
+
+        // =========================================================
+        // 8. DESVIO DE FLUXO (EXISTENTE)
         // =========================================================
         if (emailOuDominioExiste) {
-            // Aciona a cópia (ou exibe o prompt se falhar)
             await copiarParaAreaDeTransferencia(leadNumber);
             alert(`⚠️ CLIENTE JÁ EXISTENTE NO BANCO!\n\nLead Criado: ${leadNumber}\nVendedor: ${vendedor.nome}\n\nVocê será redirecionado para a ferramenta externa.`);
             window.open("https://filipegodoiessentra.github.io/emailleads/", "_blank");
@@ -297,7 +336,7 @@
         }
 
         // =========================================================
-        // 8. FLUXO NOVO: CONVERTER PARA CASE E MOVER OS EMAILS
+        // 9. FLUXO NOVO: CONVERTER PARA CASE E MOVER OS EMAILS
         // =========================================================
         console.log("🚀 Convertendo Email em Case...");
         const convertRequest = {
@@ -342,7 +381,7 @@
         });
 
         // =========================================================
-        // 9. CRIAR EMAIL DE RESPOSTA VINCULADO AO CASE
+        // 10. CRIAR EMAIL DE RESPOSTA VINCULADO AO CASE
         // =========================================================
         console.log("📧 Criando email de resposta vinculado ao Case...");
         const emailResposta = await Xrm.WebApi.createRecord("email", {
@@ -352,10 +391,17 @@
         });
         const emailRespostaId = emailResposta.id.replace(/[{}]/g, "");
 
+        // Atualizar o ID do email de resposta no histórico para o relatório
+        const historicoAtualizado = JSON.parse(localStorage.getItem("lead_log") || "[]");
+        if (historicoAtualizado.length > 0) {
+            historicoAtualizado[historicoAtualizado.length - 1].emailRespostaId = emailRespostaId;
+            localStorage.setItem("lead_log", JSON.stringify(historicoAtualizado));
+        }
+
         await Xrm.Navigation.openForm({ entityName: "email", entityId: emailRespostaId });
 
         // =========================================================
-        // 10. PREENCHER TO/FROM E GERAR BOTÃO DE CONCLUSÃO
+        // 11. PREENCHER TO/FROM E GERAR BOTÃO DE CONCLUSÃO
         // =========================================================
         let tentativas = 0;
         const localizarEmailResposta = setInterval(async () => {
