@@ -13,7 +13,6 @@
         d15: "Olá!\n\nTentei contato algumas vezes nos últimos dias mas não tive sucesso. O seu projeto/solicitação ainda é uma prioridade no momento?\n\nCaso precisem de mais tempo, basta me avisar.\n\nAtenciosamente,",
         d30: "Olá!\n\nImagino que a rotina esteja bem corrida. Como não tivemos retorno nas últimas semanas, estou pausando os contatos proativos sobre esta solicitação por enquanto.\n\nQuando for o melhor momento para retomar, basta responder a este e-mail.\n\nAtenciosamente,",
         d60: "Olá!\n\nComo não tivemos novidades nos últimos meses, estou procedendo com o encerramento desta solicitação em nosso sistema.\n\nCaso voltem a ter demanda no futuro, fiquem à vontade para nos contatar novamente. Será um grande prazer ajudar!\n\nAtenciosamente,",
-        // NOVO: FUP Pós-Vendedor
         fupVend: "Olá!\n\nVerifiquei que a sua solicitação foi direcionada para a nossa equipe de vendas há alguns dias. Gostaria de saber se o seu atendimento já foi concluído ou se você ainda precisa de algum suporte da nossa parte.\n\nSigo à disposição caso precise de algo mais!\n\nAtenciosamente,"
     };
 
@@ -30,7 +29,6 @@
     const normalizar = s => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     const escapeRegExp = string => String(string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // Funções de Gestão de Datas de FUP
     const isVencido = (isoDate) => {
         if (!isoDate) return false;
         const hoje = new Date();
@@ -42,9 +40,178 @@
     
     const formataDataFup = (isoDate) => {
         if (!isoDate) return "";
-        const dataFup = new Date(isoDate);
-        return dataFup.toLocaleDateString("pt-BR");
+        return new Date(isoDate).toLocaleDateString("pt-BR");
     };
+
+    const formataDataAPI = (dateObj) => {
+        const yyyy = dateObj.getFullYear();
+        const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const dd = String(dateObj.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    };
+
+    // =========================================================
+    // MOTOR DE CALL PLAN
+    // =========================================================
+    async function processarCallPlan(item) {
+        if (!item.caseId) throw new Error("Registro sem Case vinculado.");
+        if (!item.ticket || item.ticket === "-") throw new Error("Ticket inválido.");
+
+        const callPlanName = "FUP " + item.ticket;
+
+        // 1. Verifica Duplicidade
+        const checkQuery = `?$select=cuk_callplanid&$filter=cuk_callplanname eq '${callPlanName}'`;
+        const reqCheck = await Xrm.WebApi.retrieveMultipleRecords("cuk_callplan", checkQuery);
+        if (reqCheck.entities && reqCheck.entities.length > 0) {
+            item.callPlanId = guid(reqCheck.entities[0].cuk_callplanid);
+            return "EXISTENTE";
+        }
+
+        // 2. Busca Dados Básicos do Case (Incluindo o Dono)
+        const inc = await Xrm.WebApi.retrieveRecord("incident", guid(item.caseId), "?$select=_customerid_value,_ownerid_value");
+        let leadId = null;
+        
+        const ownerId = inc._ownerid_value;
+        const ownerType = inc["_ownerid_value@Microsoft.Dynamics.CRM.lookuplogicalname"];
+
+        if (inc._customerid_value) {
+            const customerType = inc["_customerid_value@Microsoft.Dynamics.CRM.lookuplogicalname"];
+            try {
+                const customer = await Xrm.WebApi.retrieveRecord(customerType, guid(inc._customerid_value), "?$select=_originatingleadid_value");
+                if (customer._originatingleadid_value) leadId = customer._originatingleadid_value;
+            } catch(e) {}
+        }
+
+        // 3. FAREJADOR DE LEAD: Busca Número, E-mail, Telefone e Mensagem nos e-mails
+        let leadNumber = "";
+        let leadEmail = "";
+        let leadPhone = "";
+        let leadMessage = "";
+
+        const regexLead = /L\d{2}-\d{7}/i;
+        const regexEmailBody = /E-mail\s*([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/i;
+        const regexPhoneBody = /Telefone\s*([\d\s\-\(\)\+]{8,20})/i;
+
+        let matchLead = (item.assunto || "").match(regexLead) || (item.titulo || "").match(regexLead);
+        if (matchLead) leadNumber = matchLead[0].toUpperCase();
+
+        try {
+            const qEmails = `?$select=subject,description&$filter=_regardingobjectid_value eq ${guid(item.caseId)}&$orderby=createdon desc&$top=10`;
+            const reqE = await Xrm.WebApi.retrieveMultipleRecords("email", qEmails);
+            
+            for (let em of reqE.entities) {
+                if (!leadNumber) {
+                    let mLead = (em.subject || "").match(regexLead);
+                    if (mLead) leadNumber = mLead[0].toUpperCase();
+                }
+
+                if (!leadEmail || !leadPhone || !leadMessage) {
+                    // Limpa HTML para a Regex funcionar perfeitamente
+                    let bodyLimpo = (em.description || "").replace(/<[^>]+>/g, ' ').replace(/\&nbsp;/gi, ' ').replace(/\s+/g, ' ');
+                    
+                    if (!leadEmail) {
+                        let mE = bodyLimpo.match(regexEmailBody);
+                        if (mE) leadEmail = mE[1].trim();
+                    }
+
+                    if (!leadPhone) {
+                        let mP = bodyLimpo.match(regexPhoneBody);
+                        if (mP) leadPhone = mP[1].trim();
+                    }
+
+                    // Nova captura de mensagem: Quebra o texto e pega só a última parte para ignorar o cabeçalho
+                    if (!leadMessage) {
+                        let parts = bodyLimpo.split(/Escreva aqui o que voc[êe] precisa[.:\s]*/i);
+                        if (parts.length > 1) {
+                            let textAfter = parts[parts.length - 1]; // pega a última ocorrência para ignorar cabeçalhos de preview
+                            leadMessage = textAfter.split(/(?:Referral source|Dispositivo|URL|IP do|Data de)/i)[0].trim();
+                        }
+                    }
+                }
+            }
+        } catch(e) { console.warn("Aviso: Falha ao varrer o corpo dos e-mails.", e.message); }
+
+        if (leadId && (!leadEmail || !leadPhone || !leadNumber)) {
+            try {
+                const lead = await Xrm.WebApi.retrieveRecord("lead", guid(leadId), "?$select=subject,fullname,companyname,emailaddress1,telephone1,mobilephone");
+                if (!leadNumber) leadNumber = lead.subject || lead.fullname || lead.companyname || "";
+                if (!leadEmail) leadEmail = lead.emailaddress1 || "";
+                if (!leadPhone) leadPhone = lead.mobilephone || lead.telephone1 || "";
+            } catch(e) {}
+        }
+
+        const dataHoje = new Date(); 
+        const anoCorrente = dataHoje.getFullYear();
+        const proximoContato = new Date(dataHoje);
+        proximoContato.setDate(proximoContato.getDate() + 1);
+
+        const purposeFinal = leadNumber ? `LEAD ${leadNumber.trim()}` : "LEAD";
+        
+        let notasFinal = `Case Relacionado: ${item.ticket}\nE-mail do Lead: ${leadEmail || 'N/A'}\nTelefone do Lead: ${leadPhone || 'N/A'}`;
+        if (leadMessage) {
+            notasFinal += `\n\nO que o Lead precisa:\n${leadMessage}`;
+        }
+
+        // 4. CRIAÇÃO SEGURA
+        const payload = {
+            cuk_callplanname: callPlanName,
+            cuk_calldatedateonly: `${anoCorrente}-01-01`, 
+            cuk_nextcontactdatedateonly: formataDataAPI(proximoContato), 
+            cuk_callcompleted: false,
+            cuk_callpurpose: purposeFinal,
+            "ess_CreatedCase@odata.bind": `/incidents(${guid(item.caseId)})` 
+        };
+
+        if (ownerId && ownerType) {
+            const collection = ownerType === "team" ? "teams" : "systemusers";
+            payload["ownerid@odata.bind"] = `/${collection}(${guid(ownerId)})`;
+        }
+
+        if (leadId) {
+            payload["ess_OriginatingLead@odata.bind"] = `/leads(${guid(leadId)})`;
+        }
+
+        let created;
+        try {
+            created = await Xrm.WebApi.createRecord("cuk_callplan", payload);
+        } catch (erroOriginal) {
+            delete payload["ess_OriginatingLead@odata.bind"];
+            created = await Xrm.WebApi.createRecord("cuk_callplan", payload);
+        }
+
+        const cpId = guid(created.id);
+        item.callPlanId = cpId;
+        console.log("✅ Call Plan Criado. ID:", cpId);
+
+        // 5. ATUALIZAÇÃO AUTO-DISCOVERY (Injeta Telefone e Notas)
+        if (leadPhone) {
+            let phoneSuccess = false;
+            const phoneFields = ["cuk_phonenumber", "cuk_phone", "phonenumber"];
+            for (let field of phoneFields) {
+                if (phoneSuccess) break;
+                try {
+                    let up = {}; up[field] = leadPhone;
+                    await Xrm.WebApi.updateRecord("cuk_callplan", cpId, up);
+                    phoneSuccess = true;
+                } catch(e) {}
+            }
+        }
+
+        if (notasFinal) {
+            let notesSuccess = false;
+            const notesFields = ["cuk_callnotes", "cuk_notes", "description"];
+            for (let field of notesFields) {
+                if (notesSuccess) break;
+                try {
+                    let up = {}; up[field] = notasFinal;
+                    await Xrm.WebApi.updateRecord("cuk_callplan", cpId, up);
+                    notesSuccess = true;
+                } catch(e) {}
+            }
+        }
+
+        return "CRIADO";
+    }
 
     // 3. Injeção de CSS
     const style = document.createElement("style");
@@ -55,19 +222,17 @@
         
         #fg-btn-fechar { position: absolute; right: 15px; top: 15px; background: transparent; border: none; font-size: 24px; cursor: pointer; color: #666; z-index: 10; line-height: 1; }
         #fg-btn-fechar:hover { color: #000; }
-        
         #fg-btn-minimizar { position: absolute; right: 50px; top: 5px; background: transparent; border: none; font-size: 28px; cursor: pointer; color: #666; z-index: 10; line-height: 1; font-weight: bold; }
         #fg-btn-minimizar:hover { color: #000; }
         
         #fg-fup-minimized { position: fixed; bottom: 25px; right: 25px; background: #106ebe; color: white; border: none; padding: 12px 20px; border-radius: 30px; font-family: "Segoe UI", sans-serif; font-size: 14px; font-weight: bold; cursor: pointer; z-index: 999999; box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: none; align-items: center; gap: 8px; }
         #fg-fup-minimized:hover { background: #005a9e; }
         
-        /* Lateral Esquerda */
         #fg-left { width: 380px; background: #f9fafb; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; padding: 15px; box-sizing: border-box; }
         .fg-left-title { font-size: 16px; font-weight: 600; margin-bottom: 10px; color: #111827; }
         #fg-guids-input { width: 100%; height: 80px; resize: none; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px; font-size: 12px; box-sizing: border-box; margin-bottom: 10px; flex-shrink: 0; }
         
-        .fg-btn-group { display: flex; gap: 8px; width: 100%; margin-bottom: 8px; }
+        .fg-btn-group { display: flex; gap: 8px; width: 100%; margin-bottom: 8px; flex-wrap: wrap;}
         .fg-btn { padding: 8px 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; color: white; display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex-shrink: 0; transition: 0.2s; }
         .fg-btn:hover { opacity: 0.9; }
         .fg-btn-primary { background: #106ebe; }
@@ -75,9 +240,10 @@
         .fg-btn-danger { background: #d13438; }
         .fg-btn-warning { background: #ff8c00; color: #fff; }
         .fg-btn-vend { background: #4f46e5; color: #fff; }
+        .fg-btn-purple { background: #6b21a8; color: #fff; }
+        .fg-btn-purple:hover { background: #581c87; }
         .fg-btn-neutral { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
         
-        /* Dashboard */
         .fg-dashboard { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; display: none; margin-bottom: 8px; }
         .fg-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05); flex: 1 1 45%; }
         .fg-card-full { flex: 1 1 100%; }
@@ -85,7 +251,6 @@
         .fg-card-value { font-size: 16px; font-weight: 700; color: #111827; }
         .fg-card-warn { font-size: 10px; color: #b91c1c; font-weight: bold; background: #fee2e2; padding: 2px 4px; border-radius: 4px; margin-left: 5px;}
         
-        /* Filtros e Busca */
         #fg-busca { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px; font-size: 13px; box-sizing: border-box; margin: 10px 0; flex-shrink: 0; }
         .fg-filters { display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap; }
         .fg-filter-btn { padding: 4px 10px; border-radius: 12px; border: 1px solid #d1d5db; background: #fff; color: #4b5563; font-size: 11px; cursor: pointer; }
@@ -102,16 +267,15 @@
         .fg-item-status { font-size: 11px; font-weight: bold; display: inline-block; padding: 2px 6px; border-radius: 4px; background: #f3f4f6; color: #4b5563; margin-top: 2px; }
         .fg-item-date { font-size: 10px; font-weight: bold; margin-left: 6px; }
         
-        /* Status Colors na Lista */
         .st-resp { background: #d1fae5; color: #047857; }
         .st-nresp { background: #fee2e2; color: #b91c1c; }
         .st-fup { background: #fef3c7; color: #92400e; }
         .st-vend { background: #e0e7ff; color: #3730a3; }
         .st-err { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+        .st-callplan { background: #f3e8ff; color: #6b21a8; }
         .txt-overdue { color: #dc2626; }
         .txt-ontime { color: #059669; }
         
-        /* Painel Direito */
         #fg-right { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 25px; box-sizing: border-box; background: #fff; scroll-behavior: smooth; }
         .fg-empty { display: flex; flex: 1; align-items: center; justify-content: center; color: #6b7280; font-size: 15px; text-align: center; }
         
@@ -128,7 +292,6 @@
         
         .fg-section-title { font-size: 16px; font-weight: 600; color: #111827; margin: 25px 0 15px 0; border-bottom: 2px solid #f3f4f6; padding-bottom: 5px; display:flex; justify-content:space-between; align-items:center; }
         
-        /* Templates de Copiar */
         .fg-templates-box { background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; padding: 15px; margin-bottom: 25px; }
         .fg-templates-title { font-size: 12px; font-weight: bold; color: #92400e; margin-bottom: 10px; text-transform: uppercase; }
         .fg-templates-buttons { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
@@ -139,7 +302,6 @@
         
         .fg-copy-feedback { font-size: 12px; color: #047857; font-weight: bold; margin-left: 10px; opacity: 0; transition: 0.3s; background: #d1fae5; padding: 4px 8px; border-radius: 4px; }
 
-        /* Emails */
         .fg-email-list { display: flex; flex-direction: column; gap: 10px; }
         .fg-email-card { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
         .fg-email-header { padding: 12px 15px; background: #f9fafb; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
@@ -156,7 +318,6 @@
     `;
     document.head.appendChild(style);
 
-    // 4. Estrutura HTML Principal
     const overlay = document.createElement("div");
     overlay.id = "fg-fup-overlay";
     overlay.innerHTML = `
@@ -182,6 +343,7 @@
                 <div class="fg-btn-group" id="fg-group-export" style="display: none;">
                     <button id="fg-btn-export-csv" class="fg-btn fg-btn-success" style="flex: 1;" title="Exportar para Excel">📥 EXCEL</button>
                     <button id="fg-btn-export-json" class="fg-btn fg-btn-neutral" style="flex: 1;" title="Salvar progresso">💾 SALVAR JSON</button>
+                    <button id="fg-btn-bulk-callplan" class="fg-btn fg-btn-purple" style="flex: 1;" title="Criar para todos os válidos">📞 GERAR CALL PLANS</button>
                 </div>
 
                 <input type="text" id="fg-busca" placeholder="Buscar ticket, título ou status..." autocomplete="off"/>
@@ -196,6 +358,7 @@
                     <button class="fg-filter-btn" data-filter="d30">D+30</button>
                     <button class="fg-filter-btn" data-filter="d60">D+60</button>
                     <button class="fg-filter-btn" data-filter="vend">👤 Vend.</button>
+                    <button class="fg-filter-btn" data-filter="callplan">📞 Call Plans</button>
                     <button class="fg-filter-btn" data-filter="erros">❌ Erros</button>
                 </div>
 
@@ -272,10 +435,9 @@
         let comResposta = 0, semResposta = 0, fup = 0, vendedor = 0, vencidos = 0;
 
         resultados.forEach(r => {
-            const st = r.status.toUpperCase();
+            const st = (r.status || "").toUpperCase();
             
-            // Prioriza FUP, senão Vendedor (para a tag FUP Vendas entrar em FUP)
-            if (st.includes("FUP") || st.includes("FOLLOW UP") || st.includes("D+")) {
+            if (st.includes("CALL PLAN CRIADO") || st.includes("CALL PLAN EXISTENTE") || st.includes("FUP") || st.includes("FOLLOW UP") || st.includes("D+")) {
                 fup++;
                 if (isVencido(r.fupDate)) vencidos++;
             }
@@ -310,11 +472,11 @@
 
     document.getElementById("fg-btn-export-csv").onclick = function() {
         if (!resultados.length) return alert("Nenhum dado para exportar.");
-        let csv = "Email ID Original;Case ID;Ticket;Titulo do Case;Assunto Original;Status Atual;Data Limite FUP\n";
+        let csv = "Email ID Original;Case ID;Ticket;Titulo do Case;Assunto Original;Status Atual;Data Limite FUP;Call Plan ID\n";
         resultados.forEach(r => {
             const limpa = s => `"${String(s || "").replace(/"/g, '""').replace(/\n/g, ' ')}"`;
             const dataFupStr = formataDataFup(r.fupDate);
-            csv += [limpa(r.emailId), limpa(r.caseId), limpa(r.ticket), limpa(r.titulo), limpa(r.assunto), limpa(r.status), limpa(dataFupStr)].join(";") + "\n";
+            csv += [limpa(r.emailId), limpa(r.caseId), limpa(r.ticket), limpa(r.titulo), limpa(r.assunto), limpa(r.status), limpa(dataFupStr), limpa(r.callPlanId)].join(";") + "\n";
         });
         const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
@@ -331,6 +493,46 @@
         link.href = URL.createObjectURL(blob);
         link.download = `FollowUp_Backup_${new Date().toISOString().slice(0, 10)}.json`;
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    };
+
+    document.getElementById("fg-btn-bulk-callplan").onclick = async function() {
+        const btn = this;
+        const itensParaProcessar = resultados.filter(r => !r.erro && r.caseId && r.ticket && r.ticket !== "-");
+        
+        if (!itensParaProcessar.length) return alert("Nenhum item válido para gerar Call Plans.");
+        if (!confirm(`Deseja gerar Call Plans para ${itensParaProcessar.length} registro(s)?\n(Casos já existentes serão pulados).`)) return;
+
+        btn.disabled = true;
+        const originalText = btn.innerHTML;
+        let criados = 0, falhas = 0, existentes = 0;
+
+        for (let i = 0; i < itensParaProcessar.length; i++) {
+            const r = itensParaProcessar[i];
+            btn.textContent = `⏳ GERANDO (${i+1}/${itensParaProcessar.length})...`;
+            
+            try {
+                const result = await processarCallPlan(r);
+                if (result === "EXISTENTE") {
+                    r.status = "⚠️ CALL PLAN EXISTENTE";
+                    r.statusManual = true;
+                    existentes++;
+                } else {
+                    r.status = "📞 CALL PLAN CRIADO";
+                    r.statusManual = true;
+                    criados++;
+                }
+            } catch(e) {
+                console.error("Erro ao processar CallPlan do Ticket:", r.ticket, e);
+                falhas++;
+            }
+        }
+
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        renderLista();
+        if(selecionadoIndex !== null) renderDetalhe();
+
+        alert(`Processamento de Call Plans Concluído!\n\n✅ Criados: ${criados}\n⚠️ Já Existiam: ${existentes}\n❌ Falharam: ${falhas}`);
     };
 
     const btnImportarJson = document.getElementById("fg-btn-import-json");
@@ -371,23 +573,27 @@
             try {
                 const email = await Xrm.WebApi.retrieveRecord("email", emailId, "?$select=subject,_regardingobjectid_value,activityid,createdon");
                 const caseId = email._regardingobjectid_value;
+                const caseType = email["_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname"];
                 let ticket = "", titulo = "";
 
-                if (caseId) {
+                if (caseId && caseType === "incident") {
                     try {
                         const inc = await Xrm.WebApi.retrieveRecord("incident", guid(caseId), "?$select=ticketnumber,title");
                         ticket = inc.ticketnumber || "";
                         titulo = inc.title || "";
-                    } catch (e) { console.warn("Erro ao buscar incident:", e); }
+                    } catch (e) { console.warn("Erro ao buscar incident:", e.message); }
+                } else if (caseId) {
+                    titulo = `(Vinculado a ${caseType || 'desconhecido'})`;
+                    ticket = "-";
                 }
 
                 resultados.push({ 
                     emailId, caseId, assunto: email.subject || "(Sem assunto)", 
                     ticket, titulo, status: "Aguardando análise", statusManual: false, 
-                    fupDate: null 
+                    fupDate: null, callPlanId: null 
                 });
             } catch (e) {
-                resultados.push({ emailId, caseId: null, assunto: "ERRO AO LER EMAIL", ticket: "-", titulo: String(e.message), status: "❌ ERRO", statusManual: true, fupDate: null });
+                resultados.push({ emailId, caseId: null, assunto: "ERRO AO LER EMAIL", ticket: "-", titulo: String(e.message), status: "❌ ERRO", statusManual: true, fupDate: null, callPlanId: null, erro: true });
             }
         }
 
@@ -405,23 +611,25 @@
         let filtrados = resultados;
         
         if (filtroStatus === "erros") {
-            filtrados = filtrados.filter(r => r.status.includes("ERRO"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("ERRO"));
         } else if (filtroStatus === "pendentes") {
-            filtrados = filtrados.filter(r => r.status.includes("Aguardando"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("AGUARDANDO"));
         } else if (filtroStatus === "vencidos") {
             filtrados = filtrados.filter(r => isVencido(r.fupDate));
         } else if (filtroStatus === "d3") {
-            filtrados = filtrados.filter(r => r.status.includes("D+3"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("D+3"));
         } else if (filtroStatus === "d7") {
-            filtrados = filtrados.filter(r => r.status.includes("D+7"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("D+7"));
         } else if (filtroStatus === "d15") {
-            filtrados = filtrados.filter(r => r.status.includes("D+15"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("D+15"));
         } else if (filtroStatus === "d30") {
-            filtrados = filtrados.filter(r => r.status.includes("D+30"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("D+30"));
         } else if (filtroStatus === "d60") {
-            filtrados = filtrados.filter(r => r.status.includes("D+60"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("D+60"));
         } else if (filtroStatus === "vend") {
             filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("VENDEDOR"));
+        } else if (filtroStatus === "callplan") {
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("CALL PLAN"));
         }
         
         if (termoBusca) {
@@ -452,8 +660,8 @@
             let corStatus = "";
             const stUpper = (r.status || "").toUpperCase();
             
-            // Ordem: FUP > VENDEDOR > OUTROS para pintar a tag
             if (stUpper.includes("ERRO")) corStatus = "st-err";
+            else if (stUpper.includes("CALL PLAN")) corStatus = "st-callplan";
             else if (stUpper.includes("FUP") || stUpper.includes("FOLLOW UP") || stUpper.includes("D+")) corStatus = "st-fup";
             else if (stUpper.includes("VENDEDOR")) corStatus = "st-vend";
             else if (stUpper.includes("NÃO RESPONDEU") || stUpper.includes("SEM RESPOSTA")) corStatus = "st-nresp";
@@ -498,6 +706,11 @@
             htmlFupDate = `<div class="fg-status-date-info ${vencido ? 'txt-overdue' : 'txt-ontime'}">Data Limite: ${formataDataFup(item.fupDate)} ${vencido ? '⚠️ Vencido' : ''}</div>`;
         }
 
+        let callPlanBtnHTML = `<button class="fg-btn fg-btn-purple" id="fg-btn-callplan">📞 CRIAR CALL PLAN</button>`;
+        if (item.callPlanId) {
+            callPlanBtnHTML = `<button class="fg-btn fg-btn-purple" id="fg-btn-abrir-cp" style="background:#581c87;">📞 ABRIR CALL PLAN ↗</button>`;
+        }
+
         rightDiv.innerHTML = `
             <div class="fg-detail-header">
                 <div class="fg-detail-ticket">
@@ -519,6 +732,9 @@
                 <button class="fg-btn fg-btn-success" id="fg-btn-resp">✅ RESP.</button>
                 <button class="fg-btn fg-btn-danger" id="fg-btn-nao-resp">❌ NÃO RESP.</button>
                 <button class="fg-btn fg-btn-vend" id="fg-btn-vend">👤 VENDEDOR</button>
+                
+                ${callPlanBtnHTML}
+
                 <div style="flex-grow: 1;"></div>
                 <div class="fg-status-display" id="fg-status-display">
                     ${eh(item.status)}
@@ -527,7 +743,6 @@
                 <button class="fg-btn fg-btn-primary" id="fg-btn-prox" style="margin-left: 8px;">▶ PRÓXIMO</button>
             </div>
 
-            <!-- NOVA SEÇÃO DE FOLLOW-UP -->
             <div class="fg-templates-box">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px;">
                     <div class="fg-templates-title" style="margin-bottom:0;">Registrar Etapa e Copiar Mensagem de FUP:</div>
@@ -556,6 +771,17 @@
         const linkCrm = document.getElementById("fg-link-crm");
         if (linkCrm) linkCrm.onclick = () => Xrm.Navigation.openForm({ entityName: "incident", entityId: item.caseId });
 
+        const btnAbrirCp = document.getElementById("fg-btn-abrir-cp");
+        if (btnAbrirCp) {
+            btnAbrirCp.onclick = () => {
+                console.log("Abrindo CallPlan com ID:", item.callPlanId);
+                Xrm.Navigation.openForm({ 
+                    entityName: "cuk_callplan", 
+                    entityId: item.callPlanId 
+                });
+            };
+        }
+
         document.getElementById("fg-btn-abrir").onclick = () => document.getElementById("sec-emails").scrollIntoView({ behavior: "smooth" });
 
         const updateStatus = (newStatus, addDays = null) => {
@@ -571,14 +797,39 @@
                 baseDate.setDate(baseDate.getDate() + parseInt(addDays));
                 item.fupDate = baseDate.toISOString();
             } else {
-                item.fupDate = null; 
+                if(!newStatus.includes("CALL PLAN")) {
+                    item.fupDate = null; 
+                }
             }
             
             renderLista(); 
             renderDetalhe(); 
         };
 
-        // Botões de Template FUP (Agora salvam a data calculada com base no input)
+        const btnCallPlan = document.getElementById("fg-btn-callplan");
+        if (btnCallPlan) {
+            btnCallPlan.onclick = async function() {
+                const originalText = this.innerHTML;
+                this.innerHTML = "⏳ CRIANDO...";
+                this.disabled = true;
+
+                try {
+                    const result = await processarCallPlan(item);
+                    if (result === "EXISTENTE") {
+                        updateStatus("⚠️ CALL PLAN EXISTENTE");
+                        alert("Já existe um Call Plan criado para o Ticket: " + item.ticket);
+                    } else {
+                        updateStatus("📞 CALL PLAN CRIADO");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("Erro ao criar Call Plan:\n" + err.message);
+                    this.innerHTML = originalText;
+                    this.disabled = false;
+                }
+            };
+        }
+
         document.querySelectorAll(".fg-btn-copy").forEach(btn => {
             btn.onclick = () => {
                 const text = TEMPLATES_FUP[btn.dataset.template];
@@ -629,7 +880,6 @@
                 return;
             }
 
-            // Auto-preencher a Data Base com o E-mail mais antigo (Recebimento do Lead)
             const baseInput = document.getElementById("fg-base-date");
             if (baseInput && !baseInput.value) {
                 const oldestEmail = emails[emails.length - 1]; 
@@ -666,7 +916,6 @@
                 `;
             }).join("") + `</div>`;
 
-            // Lógica de Expandir Emails e carregar imagens inline (cid:) sob demanda
             const cards = containerEmails.querySelectorAll(".fg-email-card");
             cards.forEach((card, i) => {
                 const header = card.querySelector(".fg-email-header");
@@ -680,7 +929,6 @@
                         iframe.className = "fg-email-frame";
                         let htmlContent = emailData.description || "<p>(Corpo do email vazio)</p>";
                         
-                        // Injetar CSS para responsividade e quebra de texto
                         if (!htmlContent.includes("<html")) {
                             htmlContent = `<html><head><style>body{font-family:sans-serif;font-size:14px;padding:15px; word-wrap:break-word;} img{max-width:100%; height:auto;}</style></head><body>${htmlContent}</body></html>`;
                         } else {
@@ -690,7 +938,6 @@
                         iframe.srcdoc = htmlContent;
                         body.appendChild(iframe);
 
-                        // Lógica de processamento e extração de imagens inline
                         if (htmlContent.includes("cid:")) {
                             const loadingBadge = document.createElement("div");
                             loadingBadge.innerHTML = "⏳ Processando imagens da mensagem...";
@@ -743,7 +990,6 @@
         }
     }
 
-    // Botão de Fechar Total
     document.getElementById("fg-btn-fechar").onclick = () => {
         overlay.remove();
         style.remove();
