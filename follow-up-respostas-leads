@@ -457,6 +457,7 @@
                     <button class="fg-filter-btn active" data-filter="todos">Todos</button>
                     <button class="fg-filter-btn f-alert" data-filter="vencidos">🚨 Vencidos</button>
                     <button class="fg-filter-btn" data-filter="pendentes">⏳ Aguardando</button>
+                    <button class="fg-filter-btn" data-filter="d0">D+0</button>
                     <button class="fg-filter-btn" data-filter="d1">D+1</button>
                     <button class="fg-filter-btn" data-filter="d3">D+3</button>
                     <button class="fg-filter-btn" data-filter="d7">D+7</button>
@@ -565,7 +566,7 @@
         resultados.forEach(r => {
             const st = (r.status || "").toUpperCase();
             
-            if (st.includes("CALL PLAN CRIADO") || st.includes("CALL PLAN EXISTENTE") || st.includes("FUP") || st.includes("FOLLOW UP") || st.includes("D+")) {
+            if (st.includes("CALL PLAN CRIADO") || st.includes("CALL PLAN EXISTENTE") || st.includes("FUP") || st.includes("FOLLOW UP") || st.match(/D\+\d/)) {
                 fup++;
                 if (isVencido(r.fupDate)) vencidos++;
             }
@@ -698,7 +699,6 @@
         resultados = [];
         selecionadoIndex = null;
         
-        // Puxa o lead_log atualizado a cada novo clique para usar como prioridade
         const leadLog = JSON.parse(localStorage.getItem("lead_log") || "[]");
 
         for (let i = 0; i < guidsLimpos.length; i++) {
@@ -780,27 +780,33 @@
         renderLista();
     });
 
+    // =========================================================
+    // FILTROS COM REGEX INTELIGENTE (RESOLVE PROBLEMA DO D+15 E D+1)
+    // =========================================================
     function getFiltrados() {
         let filtrados = resultados;
         
         if (filtroStatus === "erros") {
             filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("ERRO"));
         } else if (filtroStatus === "pendentes") {
-            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("AGUARDANDO") || (r.status || "").toUpperCase().includes("D+0"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("AGUARDANDO"));
         } else if (filtroStatus === "vencidos") {
             filtrados = filtrados.filter(r => isVencido(r.fupDate));
+        } else if (filtroStatus === "d0") {
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("D+0"));
         } else if (filtroStatus === "d1") {
-            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().endsWith("D+1"));
+            // Usa Expressão Regular para pegar D+1 exato (garante que não pega D+15)
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().match(/D\+1(?!\d)/));
         } else if (filtroStatus === "d3") {
-            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().endsWith("D+3"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().match(/D\+3(?!\d)/));
         } else if (filtroStatus === "d7") {
-            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().endsWith("D+7"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().match(/D\+7(?!\d)/));
         } else if (filtroStatus === "d15") {
-            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().endsWith("D+15"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().match(/D\+15(?!\d)/));
         } else if (filtroStatus === "d30") {
-            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().endsWith("D+30"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().match(/D\+30(?!\d)/));
         } else if (filtroStatus === "d60") {
-            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().endsWith("D+60"));
+            filtrados = filtrados.filter(r => (r.status || "").toUpperCase().match(/D\+60(?!\d)/));
         } else if (filtroStatus === "vend") {
             filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("VENDEDOR") || (r.status || "").toUpperCase().includes("VENDAS"));
         } else if (filtroStatus === "callplan") {
@@ -837,7 +843,7 @@
             
             if (stUpper.includes("ERRO")) corStatus = "st-err";
             else if (stUpper.includes("CALL PLAN")) corStatus = "st-callplan";
-            else if (stUpper.includes("FUP") || stUpper.includes("FOLLOW UP") || stUpper.includes("D+")) corStatus = "st-fup";
+            else if (stUpper.includes("FUP") || stUpper.includes("FOLLOW UP") || stUpper.match(/D\+\d/)) corStatus = "st-fup";
             else if (stUpper.includes("VENDEDOR") || stUpper.includes("VENDAS")) corStatus = "st-vend";
             else if (stUpper.includes("NÃO RESPONDEU") || stUpper.includes("SEM RESPOSTA")) corStatus = "st-nresp";
             else if (stUpper.includes("RESPONDEU") || stUpper.includes("POSSUI RESPOSTA")) corStatus = "st-resp";
@@ -1008,9 +1014,6 @@
             };
         }
 
-        // =================================================================
-        // BOTÕES DE DISPARO DE FUP (Envia por baixo dos panos)
-        // =================================================================
         document.querySelectorAll(".fg-btn-copy").forEach(btn => {
             btn.onclick = async () => {
                 const originalText = btn.innerHTML;
