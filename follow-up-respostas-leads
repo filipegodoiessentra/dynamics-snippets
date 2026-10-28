@@ -481,7 +481,7 @@
     document.body.appendChild(overlay);
 
     // =========================================================
-    // ✨ LER O LEAD_LOG AUTOMATICAMENTE (Sem auto-click)
+    // LER O LEAD_LOG AUTOMATICAMENTE (Sem auto-click)
     // =========================================================
     try {
         const leadLog = JSON.parse(localStorage.getItem("lead_log") || "[]");
@@ -737,13 +737,13 @@
                     
                     const diffDays = Math.floor((hoje - diaEmail) / (1000 * 60 * 60 * 24));
                     
-                    if (diffDays === 1 || diffDays === 2) statusInicial = "⏰ FUP D+1";
+                    if (diffDays <= 0) statusInicial = "⏳ D+0 (Criado Hoje)";
+                    else if (diffDays === 1 || diffDays === 2) statusInicial = "⏰ FUP D+1";
                     else if (diffDays >= 3 && diffDays < 7) statusInicial = "⏰ FUP D+3";
                     else if (diffDays >= 7 && diffDays < 15) statusInicial = "⏰ FUP D+7";
                     else if (diffDays >= 15 && diffDays < 30) statusInicial = "⏰ FUP D+15";
                     else if (diffDays >= 30 && diffDays < 60) statusInicial = "⏰ FUP D+30";
                     else if (diffDays >= 60) statusInicial = "⏰ FUP D+60";
-                    else if (diffDays === 0) statusInicial = "⏳ D+0 (Criado Hoje)";
                 }
 
                 // =================================================================
@@ -751,12 +751,25 @@
                 // =================================================================
                 for(let h of leadLog) {
                     if (guid(h.emailOriginalId) === guid(emailId) || guid(h.emailRespostaId) === guid(emailId)) {
-                        if (h.status && h.status !== "Novo" && h.status !== "Existente") {
-                            statusInicial = h.status;
-                            statusManual = true;
-                        }
+                        
                         if (h.callPlanId) callPlanIdLocal = h.callPlanId;
                         if (h.fupDate) fupDateLocal = h.fupDate;
+
+                        // Restaura o status do cache SOMENTE se for uma ação manual.
+                        // Ignora "Aguardando", "Novo", "Existente", ou "SEM RESPOSTA" (antigos) para deixar a Máquina do Tempo agir.
+                        if (h.status) {
+                            const s = h.status.toUpperCase();
+                            const isAcaoManual = s.includes("RESPONDEU") || 
+                                                 s.includes("VENDEDOR") || 
+                                                 s.includes("VENDAS") || 
+                                                 s.includes("CALL PLAN") || 
+                                                 h.fupDate != null; // Se tem fupDate, o usuário disparou um FUP manual no passado
+
+                            if (isAcaoManual) {
+                                statusInicial = h.status;
+                                statusManual = true;
+                            }
+                        }
                     }
                 }
 
@@ -795,7 +808,7 @@
         } else if (filtroStatus === "d0") {
             filtrados = filtrados.filter(r => (r.status || "").toUpperCase().includes("D+0"));
         } else if (filtroStatus === "d1") {
-            // Usa Expressão Regular para pegar D+1 exato (garante que não pega D+15)
+            // Negative lookahead: garante que não há números depois do 1 (ignorando o 15, 10, etc)
             filtrados = filtrados.filter(r => (r.status || "").toUpperCase().match(/D\+1(?!\d)/));
         } else if (filtroStatus === "d3") {
             filtrados = filtrados.filter(r => (r.status || "").toUpperCase().match(/D\+3(?!\d)/));
@@ -1094,12 +1107,15 @@
                 }
             }
 
-            if (!item.statusManual && item.status === "Aguardando análise") {
+            if (!item.statusManual) {
                 const possuiEntrada = emails.some(e => e.directioncode === false);
-                item.status = possuiEntrada ? "✅ POSSUI RESPOSTA" : "❌ SEM RESPOSTA";
-                syncLocalStorageStatus(item.emailId, item.status, item.callPlanId, item.fupDate);
-                document.getElementById("fg-status-display").textContent = item.status;
-                renderLista();
+                if (possuiEntrada) {
+                    item.status = "✅ POSSUI RESPOSTA";
+                    item.statusManual = true;
+                    syncLocalStorageStatus(item.emailId, item.status, item.callPlanId, item.fupDate);
+                    document.getElementById("fg-status-display").textContent = item.status;
+                    renderLista();
+                }
             }
 
             containerEmails.innerHTML = `<div class="fg-email-list">` + emails.map((e, idx) => {
