@@ -13,7 +13,7 @@
   const DANILO = { nome: "Danilo Ageje",  id: "e085d30c-16bb-f111-aaaf-70a8a580a75b" };
   const NICOLE = { nome: "Nicole Chiva", id: "266b2bd9-25bc-f111-aaaf-e4fb1ef6e913" };
 
-  const FILA_ATENDIMENTO = [LILIAN];
+  const FILA_ATENDIMENTO = [LILIAN, CRISTINA];
   const FILA_346_TEMP = [USUARIOS["338"], USUARIOS["340"]];
   const REGEX_COTACAO = /cotac|cotar|orcament|amostra|sample/i;
   const REGEX_ATENDIMENTO = /fup|follow|release|pedido|purchase|posicao de entrega|posição de entrega|nota fiscal|ordem de compra|\bnf\b|boleto/i;
