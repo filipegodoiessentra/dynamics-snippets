@@ -206,7 +206,7 @@
         ];
 
         const DOMINIOS_PUBLICOS = [
-            "@gmail.com", "@hotmail.com", "@outlook.com", "@yahoo.com", 
+            "@gmail.com", "@hotmail.com","@hotmail.com.br", "@outlook.com", "@yahoo.com", 
             "@yahoo.com.br", "@live.com", "@icloud.com", "@bol.com.br", "@uol.com.br", "@terra.com.br"
         ];
 
