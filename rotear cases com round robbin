@@ -136,7 +136,7 @@ Regra: ${regra}
 Detalhe: ${detalheRegra}
 Ticket: ${ticket || "-"}
 Território: ${codigo || "-"}
-Alterado por: ${executadoPor}
+Enviado por: ${executadoPor}
 Executado via: Script FG Case Router v5.0`;
 
       const anotacao = {
