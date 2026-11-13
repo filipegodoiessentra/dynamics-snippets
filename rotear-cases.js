@@ -18,7 +18,7 @@
   const REGEX_COTACAO = /cotac|cotar|orcament|amostra|sample/i;
   const REGEX_ATENDIMENTO = /fup|follow|release|pedido|purchase|posicao de entrega|posição de entrega|nota fiscal|ordem de compra|\bnf\b|boleto/i;
   const REGEX_LUCIMARA = /\b(weg|mwm|elgin)\b/i;
-  const REGEX_JOST = /\bjost\b/i;
+  const REGEX_JOST = /\b(jost|gsi)\b/i;
   const USUARIOS_MANUAIS = [FILIPE, USUARIOS["335"], USUARIOS["337"], USUARIOS["338"], USUARIOS["340"], USUARIOS["346"], CRISTINA, LILIAN, JULIANA, DANILO, NICOLE];
 
   const resultados = [];
@@ -97,10 +97,10 @@
   }
 
   async function resolverCaseDaLinha(row) {
-    const rowId=guid(row.getAttribute("row-id")||"");
-    if(!rowId) throw new Error("ID da linha não encontrado.");
-    try{const qi=await Xrm.WebApi.retrieveRecord("queueitem",rowId,"?$select=_objectid_value");const id=guid(qi._objectid_value||"");if(id)return{caseId:id,origem:"queueitem"};}catch{}
-    try{const inc=await Xrm.WebApi.retrieveRecord("incident",rowId,"?$select=incidentid,ticketnumber,title");return{caseId:guid(inc.incidentid||rowId),origem:"incident",incident:inc};}catch{}
+    const rowId = guid(row.getAttribute("row-id") || "");
+    if (!rowId) throw new Error("ID da linha não encontrado.");
+    try { const qi = await Xrm.WebApi.retrieveRecord("queueitem", rowId, "?$select=_objectid_value"); const id = guid(qi._objectid_value || ""); if (id) return { caseId: id, origem: "queueitem" }; } catch {}
+    try { const inc = await Xrm.WebApi.retrieveRecord("incident", rowId, "?$select=incidentid,ticketnumber,title"); return { caseId: guid(inc.incidentid || rowId), origem: "incident", incident: inc }; } catch {}
     throw new Error(`Não foi possível identificar o Case da linha ${rowId}.`);
   }
 
@@ -113,13 +113,51 @@
     return u;
   }
 
+  // --- FUNÇÕES DE AUDITORIA E PROTEÇÃO DE SPAM ---
+  async function obterOwnerAtual(caseId) {
+    try {
+      const inc = await Xrm.WebApi.retrieveRecord("incident", caseId, "?$select=_ownerid_value");
+      return guid(inc._ownerid_value || "");
+    } catch (e) {
+      return null; // Se falhar, assumimos que precisamos atualizar para garantir
+    }
+  }
+
+  async function registrarNotaRoteamento(caseId, nomeDestino, regra, detalheRegra, manual, ticket, codigo) {
+    try {
+      const context = typeof Xrm !== "undefined" && Xrm.Utility ? Xrm.Utility.getGlobalContext() : null;
+      const executadoPor = context && context.userSettings ? context.userSettings.userName : "Usuário Atual";
+      const tipo = manual ? "Roteamento Manual (Painel)" : "Roteamento Automático (Script)";
+      const dataHora = new Date().toLocaleString("pt-BR");
+      
+      const notetext = `Data/Hora: ${dataHora}
+Destino: ${nomeDestino}
+Regra: ${regra}
+Detalhe: ${detalheRegra}
+Ticket: ${ticket || "-"}
+Território: ${codigo || "-"}
+Alterado por: ${executadoPor}
+Executado via: Script FG Case Router v5.0`;
+
+      const anotacao = {
+        subject: tipo,
+        notetext: notetext,
+        "objectid_incident@odata.bind": `/incidents(${caseId})`
+      };
+      await Xrm.WebApi.createRecord("annotation", anotacao);
+    } catch (e) {
+      console.warn(`[ROUTER] Não foi possível criar nota na timeline para o case ${caseId}:`, e);
+    }
+  }
+  // -----------------------------------------------
+
   document.getElementById("fg-case-router-overlay")?.remove();
   document.getElementById("fg-case-router-mini")?.remove();
   document.getElementById("fg-case-router-style")?.remove();
 
   try {
     console.clear();
-    console.log("[ROUTER] V4.8 iniciada.");
+    console.log("[ROUTER] V5.0 iniciada (Timeline Rica & Prevenção de Spam).");
     const rows = await aguardarDynamicsEGrid();
     console.log(`[ROUTER] Iniciando processamento de ${rows.length} Case(s).`);
 
@@ -137,8 +175,14 @@
 
         const tituloN = normalizar(titulo);
         codigo = territorio.match(/\((\d+)\)/)?.[1] || "";
-        const resolvido=await resolverCaseDaLinha(row);caseId=resolvido.caseId;
-        if(resolvido.origem==="incident"){origemGrid="incident";titulo=titulo||resolvido.incident?.title||"";ticket=ticket||resolvido.incident?.ticketnumber||"";naoRoteados++;resultados.push({status:"pendente",ticket,titulo,territorio,codigo,fila,caseId,usuario:null,regra:"Case carregado da view",detalheRegra:"Você pode classificar ou distribuir este Case pelo painel.",erro:null,caseReason:null});continue;}
+        const resolvido = await resolverCaseDaLinha(row); caseId = resolvido.caseId;
+        
+        if (resolvido.origem === "incident") { 
+          origemGrid = "incident"; titulo = titulo || resolvido.incident?.title || ""; ticket = ticket || resolvido.incident?.ticketnumber || ""; naoRoteados++; 
+          resultados.push({ status: "pendente", ticket, titulo, territorio, codigo, fila, caseId, usuario: null, regra: "Case carregado da view", detalheRegra: "Você pode classificar ou distribuir este Case pelo painel.", erro: null, caseReason: null }); 
+          continue; 
+        }
+        
         let usuario = null, regra = "", detalheRegra = "";
 
         if (fila === "CBR Exports") {
@@ -154,40 +198,27 @@
         } else if (REGEX_ATENDIMENTO.test(tituloN)) {
           usuario = proximo("rr_atendimento", FILA_ATENDIMENTO); regra = "Atendimento Comercial";
           detalheRegra = usuario ? "Título identificado como atendimento comercial." : "Fila de Atendimento Comercial sem usuários disponíveis.";
-             } else if (codigo === "336") {
+        } else if (codigo === "336") {
           usuario = proximo("rr_atendimento", FILA_ATENDIMENTO); regra = "Território 336 - Atendimento Comercial";
           detalheRegra = usuario ? "Direcionado para o rodízio de Atendimento Comercial." : "Fila de Atendimento Comercial sem usuários disponíveis.";
- 
-} else if (["338", "340", "343", "344", "346"].includes(codigo)) {
-
-  if (REGEX_COTACAO.test(tituloN)) {
-
-    if (codigo === "346") {
-      usuario = proximo("rr_346_temp", FILA_346_TEMP);
-      regra = "Cotação - Território 346 (cobertura temporária)";
-      detalheRegra = "Cristiana ausente. Rodízio entre Matheus e Pablo.";
-
-    } else if (codigo === "343") {
-      usuario = DANILO;
-      regra = "Cotação - Território 343";
-      detalheRegra = "Título identificado como cotação.";
-
-    } else if (codigo === "344") {
-      usuario = NICOLE;
-      regra = "Cotação - Território 344";
-      detalheRegra = "Título identificado como cotação.";
-
-    } else {
-      usuario = USUARIOS[codigo];
-      regra = `Cotação - Território ${codigo}`;
-      detalheRegra = "Título identificado como cotação.";
-    }
-
-  } else {
-    regra = `Território ${codigo}`;
-    detalheRegra = "Território identificado, porém o título não foi classificado como cotação.";
-  }
-}
+        } else if (["338", "340", "343", "344", "346"].includes(codigo)) {
+          if (REGEX_COTACAO.test(tituloN)) {
+            if (codigo === "346") {
+              usuario = proximo("rr_346_temp", FILA_346_TEMP);
+              regra = "Cotação - Território 346 (cobertura temporária)";
+              detalheRegra = "Cristiana ausente. Rodízio entre Matheus e Pablo.";
+            } else if (codigo === "343") {
+              usuario = DANILO; regra = "Cotação - Território 343"; detalheRegra = "Título identificado como cotação.";
+            } else if (codigo === "344") {
+              usuario = NICOLE; regra = "Cotação - Território 344"; detalheRegra = "Título identificado como cotação.";
+            } else {
+              usuario = USUARIOS[codigo]; regra = `Cotação - Território ${codigo}`; detalheRegra = "Título identificado como cotação.";
+            }
+          } else {
+            regra = `Território ${codigo}`; detalheRegra = "Território identificado, porém o título não foi classificado como cotação.";
+          }
+        }
+        
         if (!usuario) {
           naoRoteados++;
           if (!regra) { regra = "Nenhuma regra encontrada"; detalheRegra = codigo ? `O território ${codigo} não possui regra aplicável para este título.` : "Não foi possível identificar uma regra de roteamento."; }
@@ -195,7 +226,23 @@
           continue;
         }
 
+        // --- PREVENÇÃO DE SPAM ---
+        const ownerAtual = await obterOwnerAtual(caseId);
+        if (ownerAtual && ownerAtual === guid(usuario.id)) {
+          console.log(`[ROUTER] Case ${caseId} já atribuído a ${usuario.nome}. Nenhuma ação necessária.`);
+          detalheRegra += " (Já estava com este usuário, roteamento ignorado para evitar spam).";
+          processados++;
+          resultados.push({ status: "roteado", ticket, titulo, territorio, codigo, fila, caseId, usuario, regra, detalheRegra, erro: null });
+          continue;
+        }
+        // -------------------------
+
+        // Alteração Real de Owner
         await Xrm.WebApi.updateRecord("incident", caseId, { "ownerid@odata.bind": `/systemusers(${usuario.id})` });
+        
+        // Adiciona Nota na Timeline
+        await registrarNotaRoteamento(caseId, usuario.nome, regra, detalheRegra, false, ticket, codigo);
+
         processados++;
         resultados.push({ status: "roteado", ticket, titulo, territorio, codigo, fila, caseId, usuario, regra, detalheRegra, erro: null });
       } catch (e) {
@@ -258,14 +305,30 @@
 
     async function rotearParaDestino(item, destinoValue) {
       if (!item?.caseId) throw new Error("Case ID não disponível.");
+      
       if (destinoValue === "queue:junk") {
         await enviarParaJunk(item.caseId);
+        await registrarNotaRoteamento(item.caseId, "Queue Junk", "Roteamento manual", "Enviado manualmente para a Queue Junk.", true, item.ticket, item.codigo);
+        
         item.status = "roteado"; item.usuario = { nome: "Junk", tipo: "queue" }; item.regra = "Roteamento manual"; item.detalheRegra = "Enviado manualmente para a Queue Junk."; item.erro = null;
         return "Junk";
       }
+      
       const usuario = USUARIOS_MANUAIS.find(u => guid(u.id) === guid(destinoValue));
       if (!usuario) throw new Error("Destino não encontrado.");
+      
+      // --- PREVENÇÃO DE SPAM MANUAL ---
+      const ownerAtual = await obterOwnerAtual(item.caseId);
+      if (ownerAtual && ownerAtual === guid(usuario.id)) {
+        item.status = "roteado"; item.usuario = usuario; item.regra = "Roteamento manual"; 
+        item.detalheRegra = `O Case já estava com ${usuario.nome}. Nenhuma alteração foi feita.`; item.erro = null;
+        return usuario.nome;
+      }
+      // -------------------------------
+      
       await Xrm.WebApi.updateRecord("incident", item.caseId, { "ownerid@odata.bind": `/systemusers(${usuario.id})` });
+      await registrarNotaRoteamento(item.caseId, usuario.nome, "Roteamento manual", `Roteado manualmente via painel para ${usuario.nome}.`, true, item.ticket, item.codigo);
+      
       item.status = "roteado"; item.usuario = usuario; item.regra = "Roteamento manual"; item.detalheRegra = `Roteado manualmente para ${usuario.nome}.`; item.erro = null;
       return usuario.nome;
     }
@@ -278,6 +341,7 @@
       const r = await Xrm.WebApi.retrieveRecord("incident", guid(caseId), "?$select=_subjectid_value,cuk_emailstatus,statuscode");
       return { subjectId: guid(r._subjectid_value || ""), emailStatus: r.cuk_emailstatus, statusCode: r.statuscode };
     }
+    
     async function classificarCase(caseId, subjectId) {
       caseId = guid(caseId); subjectId = guid(subjectId);
       await Xrm.WebApi.updateRecord("incident", caseId, {
