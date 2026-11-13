@@ -36,12 +36,37 @@
 
   const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+  // --- COMPONENTE DE LOADING TELA INICIAL ---
+  let loadingOverlay = document.getElementById("fg-case-router-initial-loading");
+  if (loadingOverlay) loadingOverlay.remove();
+  
+  loadingOverlay = document.createElement("div");
+  loadingOverlay.id = "fg-case-router-initial-loading";
+  loadingOverlay.style.cssText = "position:fixed;inset:0;z-index:9999999;background:rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;flex-direction:column;font-family:'Segoe UI',Arial,sans-serif;";
+  
+  loadingOverlay.innerHTML = `
+    <div style="width: 50px; height: 50px; border: 4px solid #f3f4f6; border-top: 4px solid #106ebe; border-radius: 50%; animation: fg-spin 1s linear infinite; margin-bottom: 20px;"></div>
+    <div id="fg-loading-message" style="font-size: 18px; font-weight: 600; color: #1f2937;">Iniciando Central de Triagem...</div>
+    <div id="fg-loading-submessage" style="font-size: 13px; color: #6b7280; margin-top: 8px;">Aguarde enquanto os Cases são lidos</div>
+    <style>@keyframes fg-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+  `;
+  document.body.appendChild(loadingOverlay);
+
+  function updateLoading(msg, submsg) {
+    const msgEl = document.getElementById("fg-loading-message");
+    const submsgEl = document.getElementById("fg-loading-submessage");
+    if (msgEl) msgEl.textContent = msg;
+    if (submsgEl && submsg) submsgEl.textContent = submsg;
+  }
+  // -------------------------------------------
+
   async function aguardarDynamicsEGrid() {
     const inicio = Date.now();
     const TIMEOUT_MS = 30000;
     const INTERVALO_MS = 350;
     const ESTABILIZACOES_NECESSARIAS = 4;
 
+    updateLoading("Conectando ao Dynamics...", "Aguardando Web API");
     console.log("[ROUTER] Aguardando Dynamics e Web API...");
 
     while (Date.now() - inicio < TIMEOUT_MS) {
@@ -53,6 +78,7 @@
       throw new Error("Xrm.WebApi não ficou disponível dentro de 30 segundos.");
     }
 
+    updateLoading("Lendo a fila de Cases...", "Aguardando estabilização da grid");
     console.log("[ROUTER] Dynamics disponível. Aguardando grid...");
 
     let ultimaAssinatura = "";
@@ -136,8 +162,8 @@ Regra: ${regra}
 Detalhe: ${detalheRegra}
 Ticket: ${ticket || "-"}
 Território: ${codigo || "-"}
-Enviado por: ${executadoPor}
-Executado via: Script FG Case Router v5.0`;
+Executado por: ${executadoPor}
+Executado via: Script FG Case Router v5.1`;
 
       const anotacao = {
         subject: tipo,
@@ -157,13 +183,14 @@ Executado via: Script FG Case Router v5.0`;
 
   try {
     console.clear();
-    console.log("[ROUTER] V5.0 iniciada (Timeline Rica & Prevenção de Spam).");
+    console.log("[ROUTER] V5.1 iniciada (Com Loading Screen).");
     const rows = await aguardarDynamicsEGrid();
     console.log(`[ROUTER] Iniciando processamento de ${rows.length} Case(s).`);
 
     let indiceProcessamento = 0;
     for (const row of rows) {
       indiceProcessamento++;
+      updateLoading(`Roteando Cases... (${indiceProcessamento}/${rows.length})`, "Analisando regras e territórios");
       console.log(`[ROUTER] Processando ${indiceProcessamento}/${rows.length}...`);
       let titulo = "", territorio = "", fila = "", ticket = "", codigo = "", caseId = null;
       try {
@@ -253,8 +280,10 @@ Executado via: Script FG Case Router v5.0`;
     }
 
     console.log(`[ROUTER] Concluído. ✅ ${processados} roteado(s), ⚠ ${naoRoteados} pendente(s), ❌ ${erros} erro(s).`);
+    if (loadingOverlay) loadingOverlay.remove();
     abrirPainel();
   } catch (e) {
+    if (loadingOverlay) loadingOverlay.remove();
     console.error(e);
     alert("Erro geral: " + (e?.message || String(e)));
   }
