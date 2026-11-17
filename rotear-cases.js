@@ -18,7 +18,7 @@
   const REGEX_COTACAO = /cotac|cotar|orcament|amostra|sample/i;
   const REGEX_ATENDIMENTO = /fup|follow|release|pedido|purchase|posicao de entrega|posição de entrega|nota fiscal|ordem de compra|\bnf\b|boleto/i;
   const REGEX_LUCIMARA = /\b(weg|mwm|elgin)\b/i;
-  const REGEX_JOST = /\b(jost|gsi)\b/i;
+  const REGEX_JOST = /\b(jost|gsi|mahle)\b/i;
   const USUARIOS_MANUAIS = [FILIPE, USUARIOS["335"], USUARIOS["337"], USUARIOS["338"], USUARIOS["340"], USUARIOS["346"], CRISTINA, LILIAN, JULIANA, DANILO, NICOLE];
 
   const resultados = [];
@@ -215,7 +215,9 @@ Executado via: Script FG Case Router v5.1`;
         if (fila === "CBR Exports") {
           usuario = FILIPE; regra = "Fila CBR Exports"; detalheRegra = "Case identificado na fila CBR Exports.";
         } else if (REGEX_JOST.test(tituloN)) {
-          usuario = USUARIOS["337"]; regra = "Cliente JOST"; detalheRegra = "Palavra-chave JOST identificada no título. Prioridade para Bruna Giovanini.";
+  usuario = USUARIOS["337"];
+  regra = "Cliente JOST/GSI/MAHLE";
+  detalheRegra = "Palavra-chave JOST, GSI ou MAHLE identificada no título. Prioridade para Bruna Giovanini.";
         } else if (codigo === "335" || REGEX_LUCIMARA.test(tituloN)) {
           usuario = USUARIOS["335"];
           regra = codigo === "335" ? "Território 335" : "Palavra-chave WEG/MWM/ELGIN";
