@@ -13,18 +13,19 @@
   const DANILO = { nome: "Danilo Ageje",  id: "e085d30c-16bb-f111-aaaf-70a8a580a75b" };
   const NICOLE = { nome: "Nicole Chiva", id: "266b2bd9-25bc-f111-aaaf-e4fb1ef6e913" };
 
-  const CRISTIANA = USUARIOS["346"];
+  const PRIORIDADES_EMAIL = [
+    { value: 859370000, label: "🟢 Low" },
+    { value: 859370001, label: "🟡 Normal" },
+    { value: 859370002, label: "🔴 High" }
+  ];
+  const prioridadeLabel = (v) => PRIORIDADES_EMAIL.find(p => Number(p.value) === Number(v))?.label || "Não definida";
 
-  const FILA_ATENDIMENTO = [
-  LILIAN,
-  CRISTINA,
-  CRISTIANA
-];  
+  const FILA_ATENDIMENTO = [LILIAN];
   const FILA_346_TEMP = [USUARIOS["338"], USUARIOS["340"]];
   const REGEX_COTACAO = /cotac|cotar|orcament|amostra|sample/i;
   const REGEX_ATENDIMENTO = /fup|follow|release|pedido|purchase|posicao de entrega|posição de entrega|nota fiscal|ordem de compra|\bnf\b|boleto/i;
   const REGEX_LUCIMARA = /\b(weg|mwm|elgin)\b/i;
-  const REGEX_JOST = /\b(jost|gsi|mahle)\b/i;
+  const REGEX_JOST = /\b(jost|gsi)\b/i;
   const USUARIOS_MANUAIS = [FILIPE, USUARIOS["335"], USUARIOS["337"], USUARIOS["338"], USUARIOS["340"], USUARIOS["346"], CRISTINA, LILIAN, JULIANA, DANILO, NICOLE];
 
   const resultados = [];
@@ -40,16 +41,28 @@
   const eh = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   const dataBR = (s) => { try { return s ? new Date(s).toLocaleString("pt-BR") : "-"; } catch { return s || "-"; } };
 
+  const base64ToBlob = (base64, mimeType) => {
+    const byteCharacters = atob(base64);
+    const byteArrays = [];
+    for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
+      const slice = byteCharacters.slice(offset, offset + 1024);
+      const byteNumbers = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) byteNumbers[i] = slice.charCodeAt(i);
+      byteArrays.push(new Uint8Array(byteNumbers));
+    }
+    return new Blob(byteArrays, { type: mimeType });
+  };
+
   const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   // --- COMPONENTE DE LOADING TELA INICIAL ---
   let loadingOverlay = document.getElementById("fg-case-router-initial-loading");
   if (loadingOverlay) loadingOverlay.remove();
-  
+
   loadingOverlay = document.createElement("div");
   loadingOverlay.id = "fg-case-router-initial-loading";
   loadingOverlay.style.cssText = "position:fixed;inset:0;z-index:9999999;background:rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;flex-direction:column;font-family:'Segoe UI',Arial,sans-serif;";
-  
+
   loadingOverlay.innerHTML = `
     <div style="width: 50px; height: 50px; border: 4px solid #f3f4f6; border-top: 4px solid #106ebe; border-radius: 50%; animation: fg-spin 1s linear infinite; margin-bottom: 20px;"></div>
     <div id="fg-loading-message" style="font-size: 18px; font-weight: 600; color: #1f2937;">Iniciando Central de Triagem...</div>
@@ -64,7 +77,6 @@
     if (msgEl) msgEl.textContent = msg;
     if (submsgEl && submsg) submsgEl.textContent = submsg;
   }
-  // -------------------------------------------
 
   async function aguardarDynamicsEGrid() {
     const inicio = Date.now();
@@ -151,7 +163,7 @@
       const inc = await Xrm.WebApi.retrieveRecord("incident", caseId, "?$select=_ownerid_value");
       return guid(inc._ownerid_value || "");
     } catch (e) {
-      return null; // Se falhar, assumimos que precisamos atualizar para garantir
+      return null;
     }
   }
 
@@ -161,15 +173,15 @@
       const executadoPor = context && context.userSettings ? context.userSettings.userName : "Usuário Atual";
       const tipo = manual ? "Roteamento Manual (Painel)" : "Roteamento Automático (Script)";
       const dataHora = new Date().toLocaleString("pt-BR");
-      
+
       const notetext = `Data/Hora: ${dataHora}
 Destino: ${nomeDestino}
 Regra: ${regra}
 Detalhe: ${detalheRegra}
 Ticket: ${ticket || "-"}
 Território: ${codigo || "-"}
-Executado por: ${executadoPor}
-Executado via: Script FG Case Router v5.1`;
+Enviado por: ${executadoPor}
+Executado via: Script FG Case Router v5.3`;
 
       const anotacao = {
         subject: tipo,
@@ -181,7 +193,6 @@ Executado via: Script FG Case Router v5.1`;
       console.warn(`[ROUTER] Não foi possível criar nota na timeline para o case ${caseId}:`, e);
     }
   }
-  // -----------------------------------------------
 
   document.getElementById("fg-case-router-overlay")?.remove();
   document.getElementById("fg-case-router-mini")?.remove();
@@ -189,7 +200,7 @@ Executado via: Script FG Case Router v5.1`;
 
   try {
     console.clear();
-    console.log("[ROUTER] V5.1 iniciada (Com Loading Screen).");
+    console.log("[ROUTER] V5.3 iniciada (Com Loading Screen, Visualizador de Anexos e Email Priority).");
     const rows = await aguardarDynamicsEGrid();
     console.log(`[ROUTER] Iniciando processamento de ${rows.length} Case(s).`);
 
@@ -209,21 +220,19 @@ Executado via: Script FG Case Router v5.1`;
         const tituloN = normalizar(titulo);
         codigo = territorio.match(/\((\d+)\)/)?.[1] || "";
         const resolvido = await resolverCaseDaLinha(row); caseId = resolvido.caseId;
-        
-        if (resolvido.origem === "incident") { 
-          origemGrid = "incident"; titulo = titulo || resolvido.incident?.title || ""; ticket = ticket || resolvido.incident?.ticketnumber || ""; naoRoteados++; 
-          resultados.push({ status: "pendente", ticket, titulo, territorio, codigo, fila, caseId, usuario: null, regra: "Case carregado da view", detalheRegra: "Você pode classificar ou distribuir este Case pelo painel.", erro: null, caseReason: null }); 
-          continue; 
+
+        if (resolvido.origem === "incident") {
+          origemGrid = "incident"; titulo = titulo || resolvido.incident?.title || ""; ticket = ticket || resolvido.incident?.ticketnumber || ""; naoRoteados++;
+          resultados.push({ status: "pendente", ticket, titulo, territorio, codigo, fila, caseId, usuario: null, regra: "Case carregado da view", detalheRegra: "Você pode classificar ou distribuir este Case pelo painel.", erro: null, caseReason: null, emailPriority: null });
+          continue;
         }
-        
+
         let usuario = null, regra = "", detalheRegra = "";
 
         if (fila === "CBR Exports") {
           usuario = FILIPE; regra = "Fila CBR Exports"; detalheRegra = "Case identificado na fila CBR Exports.";
         } else if (REGEX_JOST.test(tituloN)) {
-  usuario = USUARIOS["337"];
-  regra = "Cliente JOST/GSI/MAHLE";
-  detalheRegra = "Palavra-chave JOST, GSI ou MAHLE identificada no título. Prioridade para Bruna Giovanini.";
+          usuario = USUARIOS["337"]; regra = "Cliente JOST"; detalheRegra = "Palavra-chave JOST/GSI identificada no título. Prioridade para Bruna Giovanini.";
         } else if (codigo === "335" || REGEX_LUCIMARA.test(tituloN)) {
           usuario = USUARIOS["335"];
           regra = codigo === "335" ? "Território 335" : "Palavra-chave WEG/MWM/ELGIN";
@@ -253,11 +262,11 @@ Executado via: Script FG Case Router v5.1`;
             regra = `Território ${codigo}`; detalheRegra = "Território identificado, porém o título não foi classificado como cotação.";
           }
         }
-        
+
         if (!usuario) {
           naoRoteados++;
           if (!regra) { regra = "Nenhuma regra encontrada"; detalheRegra = codigo ? `O território ${codigo} não possui regra aplicável para este título.` : "Não foi possível identificar uma regra de roteamento."; }
-          resultados.push({ status: "pendente", ticket, titulo, territorio, codigo, fila, caseId, usuario: null, regra, detalheRegra, erro: null });
+          resultados.push({ status: "pendente", ticket, titulo, territorio, codigo, fila, caseId, usuario: null, regra, detalheRegra, erro: null, emailPriority: null });
           continue;
         }
 
@@ -267,22 +276,21 @@ Executado via: Script FG Case Router v5.1`;
           console.log(`[ROUTER] Case ${caseId} já atribuído a ${usuario.nome}. Nenhuma ação necessária.`);
           detalheRegra += " (Já estava com este usuário, roteamento ignorado para evitar spam).";
           processados++;
-          resultados.push({ status: "roteado", ticket, titulo, territorio, codigo, fila, caseId, usuario, regra, detalheRegra, erro: null });
+          resultados.push({ status: "roteado", ticket, titulo, territorio, codigo, fila, caseId, usuario, regra, detalheRegra, erro: null, emailPriority: null });
           continue;
         }
-        // -------------------------
 
         // Alteração Real de Owner
         await Xrm.WebApi.updateRecord("incident", caseId, { "ownerid@odata.bind": `/systemusers(${usuario.id})` });
-        
+
         // Adiciona Nota na Timeline
         await registrarNotaRoteamento(caseId, usuario.nome, regra, detalheRegra, false, ticket, codigo);
 
         processados++;
-        resultados.push({ status: "roteado", ticket, titulo, territorio, codigo, fila, caseId, usuario, regra, detalheRegra, erro: null });
+        resultados.push({ status: "roteado", ticket, titulo, territorio, codigo, fila, caseId, usuario, regra, detalheRegra, erro: null, emailPriority: null });
       } catch (e) {
         erros++;
-        resultados.push({ status: "erro", ticket, titulo, territorio, codigo, fila, caseId, usuario: null, regra: "Erro durante processamento", detalheRegra: e?.message || String(e), erro: e?.message || String(e) });
+        resultados.push({ status: "erro", ticket, titulo, territorio, codigo, fila, caseId, usuario: null, regra: "Erro durante processamento", detalheRegra: e?.message || String(e), erro: e?.message || String(e), emailPriority: null });
         console.error("Erro ao processar linha:", e);
       }
     }
@@ -342,43 +350,58 @@ Executado via: Script FG Case Router v5.1`;
 
     async function rotearParaDestino(item, destinoValue) {
       if (!item?.caseId) throw new Error("Case ID não disponível.");
-      
+
       if (destinoValue === "queue:junk") {
         await enviarParaJunk(item.caseId);
         await registrarNotaRoteamento(item.caseId, "Queue Junk", "Roteamento manual", "Enviado manualmente para a Queue Junk.", true, item.ticket, item.codigo);
-        
+
         item.status = "roteado"; item.usuario = { nome: "Junk", tipo: "queue" }; item.regra = "Roteamento manual"; item.detalheRegra = "Enviado manualmente para a Queue Junk."; item.erro = null;
         return "Junk";
       }
-      
+
       const usuario = USUARIOS_MANUAIS.find(u => guid(u.id) === guid(destinoValue));
       if (!usuario) throw new Error("Destino não encontrado.");
-      
-      // --- PREVENÇÃO DE SPAM MANUAL ---
+
       const ownerAtual = await obterOwnerAtual(item.caseId);
       if (ownerAtual && ownerAtual === guid(usuario.id)) {
-        item.status = "roteado"; item.usuario = usuario; item.regra = "Roteamento manual"; 
+        item.status = "roteado"; item.usuario = usuario; item.regra = "Roteamento manual";
         item.detalheRegra = `O Case já estava com ${usuario.nome}. Nenhuma alteração foi feita.`; item.erro = null;
         return usuario.nome;
       }
-      // -------------------------------
-      
+
       await Xrm.WebApi.updateRecord("incident", item.caseId, { "ownerid@odata.bind": `/systemusers(${usuario.id})` });
       await registrarNotaRoteamento(item.caseId, usuario.nome, "Roteamento manual", `Roteado manualmente via painel para ${usuario.nome}.`, true, item.ticket, item.codigo);
-      
+
       item.status = "roteado"; item.usuario = usuario; item.regra = "Roteamento manual"; item.detalheRegra = `Roteado manualmente para ${usuario.nome}.`; item.erro = null;
       return usuario.nome;
     }
 
     let cacheSubjects = null;
     async function buscarSubjects(){ if(cacheSubjects) return cacheSubjects; const r=await Xrm.WebApi.retrieveMultipleRecords("subject","?$select=subjectid,title,_parentsubject_value&$orderby=title asc",5000); cacheSubjects=(r.entities||[]).filter(x=>x.subjectid&&x.title); return cacheSubjects; }
-    async function obterCaseReason(caseId){ const r=await Xrm.WebApi.retrieveRecord("incident",caseId,"?$select=_subjectid_value"); const id=guid(r._subjectid_value||""); if(!id)return null; const ss=await buscarSubjects(); const x=ss.find(a=>guid(a.subjectid)===id); return x?{id:guid(x.subjectid),title:x.title}:null; }
+    async function obterDadosExtrasCase(caseId) {
+      const r = await Xrm.WebApi.retrieveRecord("incident", caseId, "?$select=_subjectid_value,ess_emailpriority");
+      const id = guid(r._subjectid_value || "");
+      let caseReason = null;
+      if (id) {
+        const ss = await buscarSubjects();
+        const x = ss.find(a => guid(a.subjectid) === id);
+        if (x) caseReason = { id: guid(x.subjectid), title: x.title };
+      }
+      return { caseReason, emailPriority: r.ess_emailpriority ?? null };
+    }
+    async function definirEmailPriority(caseId, priorityValue) {
+      caseId = guid(caseId);
+      const val = Number(priorityValue);
+      await Xrm.WebApi.updateRecord("incident", caseId, { ess_emailpriority: val });
+      return val;
+    }
+
     const EMAIL_STATUS_CUSTOMER_RESPONDED=971970002, CASE_STATUS_IN_PROGRESS=1;
     async function lerEstadoClassificacao(caseId) {
       const r = await Xrm.WebApi.retrieveRecord("incident", guid(caseId), "?$select=_subjectid_value,cuk_emailstatus,statuscode");
       return { subjectId: guid(r._subjectid_value || ""), emailStatus: r.cuk_emailstatus, statusCode: r.statuscode };
     }
-    
+
     async function classificarCase(caseId, subjectId) {
       caseId = guid(caseId); subjectId = guid(subjectId);
       await Xrm.WebApi.updateRecord("incident", caseId, {
@@ -413,7 +436,8 @@ Executado via: Script FG Case Router v5.1`;
 .fg-detail{padding:20px 24px;overflow-y:auto}.fg-empty{height:100%;min-height:100px;display:flex;align-items:center;justify-content:center;text-align:center;color:#9ca3af;padding:25px}.fg-section{margin-bottom:24px}.fg-section-title{margin-bottom:9px;text-transform:uppercase;font-size:11px;font-weight:700;letter-spacing:.05em;color:#6b7280}.fg-case-title{font-size:19px;font-weight:650;color:#111827;margin-bottom:5px}.fg-case-subject{color:#4b5563;font-size:14px;line-height:1.5}.fg-info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.fg-info{background:#f9fafb;border-radius:7px;padding:9px 11px}.fg-info-label{font-size:10px;color:#6b7280;text-transform:uppercase;margin-bottom:2px}.fg-info-value{font-size:13px;color:#111827;overflow-wrap:anywhere}.fg-rule{background:#f0f7ff;padding:12px;border-radius:8px;border-left:3px solid #106ebe;font-size:13px;line-height:1.5}
 .fg-routing{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.fg-select{min-width:250px;border:1px solid #d1d5db;border-radius:7px;padding:8px 10px;background:#fff}.fg-btn{border:0;padding:8px 14px;border-radius:7px;cursor:pointer;font-weight:600;font-size:12px}.fg-btn-primary{color:#fff;background:#106ebe}.fg-btn-primary:hover{background:#005a9e}.fg-btn-secondary{color:#374151;background:#f3f4f6}.fg-btn-secondary:hover{background:#e5e7eb}.fg-btn:disabled{cursor:not-allowed;opacity:.6}
 .fg-email-loading{padding:18px;text-align:center;color:#6b7280;background:#f9fafb;border-radius:8px}.fg-email-error{padding:12px;background:#fef2f2;color:#991b1b;border-radius:8px;font-size:12px;line-height:1.5}.fg-email{margin-bottom:10px;overflow:hidden;border:1px solid #e5e7eb;border-radius:9px;background:#fff}.fg-email-header{background:#f9fafb;padding:11px 13px;cursor:pointer}.fg-email-header:hover{background:#f3f4f6}.fg-email-subject{font-size:13px;font-weight:650;color:#1f2937}.fg-email-date{margin-top:4px;font-size:11px;color:#6b7280}.fg-email-content{display:none;background:#fff;border-top:1px solid #e5e7eb}.fg-email.open .fg-email-content{display:block}.fg-email-toolbar{display:flex;justify-content:space-between;padding:7px 10px;background:#fafafa;border-bottom:1px solid #e5e7eb;font-size:10px;color:#6b7280}.fg-email-frame{display:block;width:100%;height:520px;border:0;background:#fff}
-.fg-class-box{border:1px solid #dbe3ec;border-radius:9px;padding:12px;background:#fff}.fg-class-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.fg-class-search{flex:1;min-width:220px;border:1px solid #d1d5db;border-radius:7px;padding:8px 10px}.fg-class-results{max-height:220px;overflow:auto;margin-top:8px}.fg-class-option{padding:8px;border-bottom:1px solid #eee;cursor:pointer;font-size:12px}.fg-class-option:hover,.fg-class-option.selected{background:#eff6ff}.fg-class-current{font-size:12px;color:#374151;margin-bottom:8px}.fg-client-box{border:1px solid #dbe3ec;border-radius:9px;padding:12px;background:#fbfdff}.fg-client-top{display:flex;gap:8px;flex-wrap:wrap}.fg-client-search{flex:1;min-width:240px;border:1px solid #d1d5db;border-radius:7px;padding:8px 10px}.fg-base-status{font-size:11px;color:#6b7280;margin:7px 0}.fg-client-result{border-top:1px solid #e5e7eb;padding:10px 2px}.fg-client-name{font-size:13px;font-weight:650}.fg-client-meta{font-size:11px;color:#6b7280;line-height:1.55}.fg-suggest{margin-top:6px;padding:7px 9px;background:#ecfdf5;color:#065f46;border-radius:6px;font-size:12px}.fg-check{margin-right:8px;accent-color:#106ebe}.fg-bulk{padding:10px 20px;border-bottom:1px solid #e5e7eb;background:#f0f7ff;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.fg-bulk-count{font-weight:650;font-size:12px;color:#1f2937}.fg-bulk-select{min-width:230px;border:1px solid #d1d5db;border-radius:7px;padding:8px 10px;background:white}.fg-footer{padding:10px 20px;border-top:1px solid #e5e7eb;background:#fafafa;display:flex;justify-content:flex-end;gap:8px}
+.fg-att-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.fg-att-badge{font-size:11px;background:#e5e7eb;color:#374151;padding:4px 9px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;border:1px solid #d1d5db;cursor:pointer;transition:.15s;font-weight:600}.fg-att-badge:hover{background:#d1d5db;transform:translateY(-1px)}
+.fg-class-box{border:1px solid #dbe3ec;border-radius:9px;padding:12px;background:#fff}.fg-class-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.fg-class-search{flex:1;min-width:220px;border:1px solid #d1d5db;border-radius:7px;padding:8px 10px}.fg-class-results{max-height:220px;overflow:auto;margin-top:8px}.fg-class-option{padding:8px;border-bottom:1px solid #eee;cursor:pointer;font-size:12px}.fg-class-option:hover,.fg-class-option.selected{background:#eff6ff}.fg-class-current{font-size:12px;color:#374151;margin-bottom:8px}.fg-client-box{border:1px solid #dbe3ec;border-radius:9px;padding:12px;background:#fbfdff}.fg-client-top{display:flex;gap:8px;flex-wrap:wrap}.fg-client-search{flex:1;min-width:240px;border:1px solid #d1d5db;border-radius:7px;padding:8px 10px}.fg-base-status{font-size:11px;color:#6b7280;margin:7px 0}.fg-client-result{border-top:1px solid #e5e7eb;padding:10px 2px}.fg-client-name{font-size:13px;font-weight:650}.fg-client-meta{font-size:11px;color:#6b7280;line-height:1.55}.fg-suggest{margin-top:6px;padding:7px 9px;background:#ecfdf5;color:#065f46;border-radius:6px;font-size:12px}.fg-check{margin-right:8px;accent-color:#106ebe}.fg-bulk{padding:10px 20px;border-bottom:1px solid #e5e7eb;background:#f0f7ff;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.fg-bulk-count{font-weight:650;font-size:12px;color:#1f2937}.fg-bulk-select{min-width:190px;border:1px solid #d1d5db;border-radius:7px;padding:8px 10px;background:white}.fg-footer{padding:10px 20px;border-top:1px solid #e5e7eb;background:#fafafa;display:flex;justify-content:flex-end;gap:8px}
 #fg-case-router-mini{position:fixed;right:24px;bottom:24px;z-index:1000000;min-width:250px;max-width:380px;padding:11px 15px;border:1px solid #d1d5db;border-radius:10px;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.24);cursor:pointer;font-family:"Segoe UI",Arial,sans-serif;display:none}.fg-mini-title{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:650;color:#1f2937;font-size:13px}.fg-mini-info{margin-top:4px;font-size:11px;color:#6b7280}
 @media(max-width:850px){#fg-case-router-modal{width:98vw;height:96vh}.fg-body{grid-template-columns:1fr}.fg-list{max-height:38vh;border-right:none;border-bottom:1px solid #e5e7eb}.fg-search{width:100%;margin-left:0}.fg-email-frame{height:420px}}
 `;
@@ -425,7 +449,7 @@ Executado via: Script FG Case Router v5.1`;
 <div class="fg-header"><div><div class="fg-header-title">Resultado do Roteamento</div><div class="fg-header-subtitle">Central de triagem de Cases</div></div><div class="fg-header-actions"><button id="fg-minimize" class="fg-window-button" title="Minimizar">−</button><button id="fg-close" class="fg-window-button" title="Fechar">×</button></div></div>
 <div class="fg-summary" id="fg-summary"></div>
 <div class="fg-toolbar"><button class="fg-filter active" data-filter="todos">Todos</button><button class="fg-filter" data-filter="roteado">✅ Roteados</button><button class="fg-filter" data-filter="pendente">⚠ Não roteados</button><button class="fg-filter" data-filter="erro">❌ Erros</button><input id="fg-search" class="fg-search" placeholder="Buscar ticket, título, território..."></div>
-<div class="fg-bulk"><span class="fg-bulk-count" id="fg-bulk-count">0 selecionados</span><button class="fg-btn fg-btn-secondary" id="fg-select-visible">Selecionar visíveis</button><button class="fg-btn fg-btn-secondary" id="fg-select-pending">Selecionar pendentes</button><button class="fg-btn fg-btn-secondary" id="fg-clear-selection">Limpar seleção</button><select id="fg-bulk-dest" class="fg-bulk-select"><option value="">Selecione o destino</option></select><button class="fg-btn fg-btn-primary" id="fg-bulk-route">ROTEAR SELECIONADOS</button><select id="fg-bulk-reason" class="fg-bulk-select"><option value="">Selecione o Case Reason</option></select><button class="fg-btn fg-btn-secondary" id="fg-bulk-classify">CLASSIFICAR SELECIONADOS</button></div>
+<div class="fg-bulk"><span class="fg-bulk-count" id="fg-bulk-count">0 selecionados</span><button class="fg-btn fg-btn-secondary" id="fg-select-visible">Selecionar visíveis</button><button class="fg-btn fg-btn-secondary" id="fg-select-pending">Selecionar pendentes</button><button class="fg-btn fg-btn-secondary" id="fg-clear-selection">Limpar seleção</button><select id="fg-bulk-dest" class="fg-bulk-select"><option value="">Selecione o destino</option></select><button class="fg-btn fg-btn-primary" id="fg-bulk-route">ROTEAR SELECIONADOS</button><select id="fg-bulk-reason" class="fg-bulk-select"><option value="">Selecione o Case Reason</option></select><button class="fg-btn fg-btn-secondary" id="fg-bulk-classify">CLASSIFICAR SELECIONADOS</button><select id="fg-bulk-priority" class="fg-bulk-select"><option value="">Selecione a Prioridade</option></select><button class="fg-btn fg-btn-secondary" id="fg-bulk-set-priority">DEFINIR PRIORIDADE</button></div>
 <div class="fg-body"><div class="fg-list" id="fg-list"></div><div class="fg-detail" id="fg-detail"><div class="fg-empty">Selecione um Case para visualizar os detalhes.</div></div></div>
 <div class="fg-footer"><button id="fg-refresh-list" class="fg-btn fg-btn-secondary">Atualizar lista</button><button id="fg-footer-minimize" class="fg-btn fg-btn-secondary">Minimizar</button><button id="fg-footer-close" class="fg-btn fg-btn-secondary">Fechar</button></div>`;
     overlay.appendChild(modal); document.body.appendChild(overlay);
@@ -477,6 +501,7 @@ Executado via: Script FG Case Router v5.1`;
       this.disabled=false; this.textContent="ROTEAR SELECIONADOS"; atualizarContadores(); renderizarLista(); atualizarBulk();
       alert(`Roteamento em massa concluído.\n\n✅ ${ok} processado(s)\n❌ ${falhas.length} erro(s)` + (falhas.length ? `\n\n${falhas.slice(0,8).join("\n")}` : ""));
     };
+
     const bulkReason=modal.querySelector("#fg-bulk-reason");
     buscarSubjects().then(ss=>{bulkReason.innerHTML='<option value="">Selecione o Case Reason</option>'+ss.map(x=>`<option value="${eh(guid(x.subjectid))}">${eh(x.title)}</option>`).join("")}).catch(e=>console.warn("Não foi possível carregar Case Reasons",e));
     modal.querySelector("#fg-bulk-classify").onclick=async function(){
@@ -495,13 +520,41 @@ Executado via: Script FG Case Router v5.1`;
         alert(`Classificação concluída.\n\n✅ ${ok} classificado(s)\n❌ ${falhas.length} erro(s)`+(falhas.length?`\n\n${falhas.slice(0,8).join("\n")}`:""));
       }catch(e){this.disabled=false;this.textContent="CLASSIFICAR SELECIONADOS";alert("Erro ao classificar: "+(e?.message||String(e)))}
     };
+
+    const bulkPriority = modal.querySelector("#fg-bulk-priority");
+    bulkPriority.innerHTML = `<option value="">Selecione a Prioridade</option>` + PRIORIDADES_EMAIL.map(p => `<option value="${p.value}">${eh(p.label)}</option>`).join("");
+    modal.querySelector("#fg-bulk-set-priority").onclick = async function () {
+      const itens = resultados.filter(r => selecionados.has(r.caseId));
+      if (!itens.length) return alert("Selecione pelo menos um Case.");
+      const val = bulkPriority.value;
+      if (!val) return alert("Selecione uma Prioridade.");
+      const label = prioridadeLabel(val);
+      if (!confirm(`Aplicar prioridade '${label}' a ${itens.length} Case(s)?`)) return;
+      this.disabled = true; let ok = 0, falhas = [];
+      for (let i = 0; i < itens.length; i++) {
+        this.textContent = `APLICANDO ${i + 1}/${itens.length}...`;
+        try {
+          await definirEmailPriority(itens[i].caseId, val);
+          itens[i].emailPriority = Number(val);
+          selecionados.delete(itens[i].caseId);
+          ok++;
+          renderizarLista(); atualizarBulk();
+        } catch (e) {
+          falhas.push(`${itens[i].ticket || itens[i].caseId}: ${e?.message || String(e)}`);
+        }
+      }
+      this.disabled = false; this.textContent = "DEFINIR PRIORIDADE";
+      if (selecionado) renderizarDetalhes(selecionado);
+      alert(`Prioridade atualizada.\n\n✅ ${ok} atualizado(s)\n❌ ${falhas.length} erro(s)` + (falhas.length ? `\n\n${falhas.slice(0, 8).join("\n")}` : ""));
+    };
+
     atualizarBulk();
 
     function filtrados() {
       return resultados.filter((r) => {
         if (filtroAtual !== "todos" && r.status !== filtroAtual) return false;
         if (!buscaAtual) return true;
-        return normalizar([r.ticket, r.titulo, r.territorio, r.codigo, r.fila, r.usuario?.nome, r.regra].filter(Boolean).join(" ")).includes(buscaAtual);
+        return normalizar([r.ticket, r.titulo, r.territorio, r.codigo, r.fila, r.usuario?.nome, r.regra, prioridadeLabel(r.emailPriority)].filter(Boolean).join(" ")).includes(buscaAtual);
       });
     }
 
@@ -511,7 +564,7 @@ Executado via: Script FG Case Router v5.1`;
       list.innerHTML = f.map((r) => {
         const idx = resultados.indexOf(r);
         const badge = r.status === "roteado" ? '<span class="fg-badge fg-badge-ok">✓ ROTEADO</span>' : r.status === "pendente" ? '<span class="fg-badge fg-badge-warning">⚠ NÃO ROTEADO</span>' : '<span class="fg-badge fg-badge-error">✕ ERRO</span>';
-        return `<div class="fg-item ${selecionado === r ? "selected" : ""}" data-index="${idx}"><div><input type="checkbox" class="fg-check" data-check-index="${idx}" ${selecionados.has(r.caseId) ? "checked" : ""}>${badge}</div><div class="fg-ticket">${eh(r.ticket || "Sem ticket")}</div><div class="fg-title">${eh(r.titulo)}</div><div class="fg-meta">Território: ${eh(r.codigo || "-")} &nbsp;•&nbsp; Fila: ${eh(r.fila || "-")}${r.usuario ? `<br>→ ${eh(r.usuario.nome)}` : ""}${r.caseReason ? `<br>✓ Case Reason: <strong>${eh(r.caseReason.title)}</strong>` : ""}${r.classificacaoStatus === "incompleta" ? `<br><span style="color:#b91c1c;font-weight:700">⚠ CLASSIFICAÇÃO NÃO CONFIRMADA</span>` : ""}</div></div>`;
+        return `<div class="fg-item ${selecionado === r ? "selected" : ""}" data-index="${idx}"><div><input type="checkbox" class="fg-check" data-check-index="${idx}" ${selecionados.has(r.caseId) ? "checked" : ""}>${badge}</div><div class="fg-ticket">${eh(r.ticket || "Sem ticket")}</div><div class="fg-title">${eh(r.titulo)}</div><div class="fg-meta">Território: ${eh(r.codigo || "-")} &nbsp;•&nbsp; Fila: ${eh(r.fila || "-")}${r.usuario ? `<br>→ ${eh(r.usuario.nome)}` : ""}${r.emailPriority != null ? `<br>Prioridade: <strong>${eh(prioridadeLabel(r.emailPriority))}</strong>` : ""}${r.caseReason ? `<br>✓ Case Reason: <strong>${eh(r.caseReason.title)}</strong>` : ""}${r.classificacaoStatus === "incompleta" ? `<br><span style="color:#b91c1c;font-weight:700">⚠ CLASSIFICAÇÃO NÃO CONFIRMADA</span>` : ""}</div></div>`;
       }).join("");
       list.querySelectorAll(".fg-item").forEach((el) => el.onclick = function (ev) {
         if (ev.target.classList.contains("fg-check")) return;
@@ -522,19 +575,47 @@ Executado via: Script FG Case Router v5.1`;
 
     async function renderizarDetalhes(item) {
       if (!item) return;
-      try { item.caseReason = await obterCaseReason(item.caseId); } catch(e) { console.warn("Não foi possível ler Case Reason atual", e); }
+      try {
+        const extras = await obterDadosExtrasCase(item.caseId);
+        item.caseReason = extras.caseReason;
+        item.emailPriority = extras.emailPriority;
+      } catch(e) { console.warn("Não foi possível ler dados extras do Case", e); }
+
       const opts = USUARIOS_MANUAIS.map((u) => `<option value="${eh(u.id)}">${eh(u.nome)}</option>`).join("") + `<option value="queue:junk">Junk</option>`;
+      const priorityOpts = PRIORIDADES_EMAIL.map((p) => `<option value="${p.value}" ${Number(item.emailPriority) === p.value ? "selected" : ""}>${eh(p.label)}</option>`).join("");
       const status = item.status === "roteado" ? `✅ Roteado para ${eh(item.usuario?.nome || "-")}` : item.status === "pendente" ? "⚠ Não roteado automaticamente" : "❌ Erro durante processamento";
+
       detail.innerHTML = `
 <div class="fg-section"><div class="fg-case-title">${eh(item.ticket || "Case")}</div><div class="fg-case-subject">${eh(item.titulo || "-")}</div></div>
-<div class="fg-section"><div class="fg-section-title">Informações</div><div class="fg-info-grid"><div class="fg-info"><div class="fg-info-label">Status</div><div class="fg-info-value">${status}</div></div><div class="fg-info"><div class="fg-info-label">Território</div><div class="fg-info-value">${eh(item.territorio || item.codigo || "-")}</div></div><div class="fg-info"><div class="fg-info-label">Fila</div><div class="fg-info-value">${eh(item.fila || "-")}</div></div><div class="fg-info"><div class="fg-info-label">Case ID</div><div class="fg-info-value">${eh(item.caseId || "-")}</div></div></div></div>
+<div class="fg-section"><div class="fg-section-title">Informações</div><div class="fg-info-grid"><div class="fg-info"><div class="fg-info-label">Status</div><div class="fg-info-value">${status}</div></div><div class="fg-info"><div class="fg-info-label">Território</div><div class="fg-info-value">${eh(item.territorio || item.codigo || "-")}</div></div><div class="fg-info"><div class="fg-info-label">Fila</div><div class="fg-info-value">${eh(item.fila || "-")}</div></div><div class="fg-info"><div class="fg-info-label">Prioridade Atual</div><div class="fg-info-value" id="fg-current-priority-value">${eh(prioridadeLabel(item.emailPriority))}</div></div></div></div>
 <div class="fg-section"><div class="fg-section-title">Decisão do roteamento</div><div class="fg-rule"><strong>${eh(item.regra)}</strong><br>${eh(item.detalheRegra || "-")}</div></div>
+<div class="fg-section"><div class="fg-section-title">Email Priority</div><div class="fg-routing"><select class="fg-select" id="fg-manual-priority"><option value="">Selecione a Prioridade</option>${priorityOpts}</select><button class="fg-btn fg-btn-primary" id="fg-save-priority">SALVAR PRIORIDADE</button></div><div id="fg-priority-feedback" style="margin-top:8px;font-size:12px"></div></div>
 <div class="fg-section"><div class="fg-section-title">Classificação do Case</div><div class="fg-class-box"><div class="fg-class-current"><strong>Case Reason atual:</strong> ${item.caseReason ? `✅ ${eh(item.caseReason.title)}` : "○ Não classificado"}</div><div style="font-size:11px;color:#6b7280">Lido diretamente do Case no Dataverse.</div></div></div>
 ${item.classificacaoStatus === "incompleta" ? `<div class="fg-section"><div class="fg-section-title">Validação da classificação</div><div class="fg-email-error"><strong>⚠ Classificação não confirmada.</strong><br>${eh(item.classificacaoErro || "Verifique os campos obrigatórios do Case.")}</div></div>` : ""}
 ${item.erro ? `<div class="fg-section"><div class="fg-section-title">Erro</div><div class="fg-email-error">${eh(item.erro)}</div></div>` : ""}
 <div class="fg-section"><div class="fg-section-title">Base de Clientes</div><div class="fg-client-box"><div id="fg-base-status" class="fg-base-status"></div><div class="fg-client-top"><input id="fg-client-search" class="fg-client-search" placeholder="Nome do cliente, CCUST ou CNPJ"><button id="fg-client-find" class="fg-btn fg-btn-secondary">BUSCAR</button><button id="fg-client-import" class="fg-btn fg-btn-secondary">BASE</button><input id="fg-client-file" type="file" accept=".xlsx,.xls" style="display:none"></div><div id="fg-client-results"></div></div></div>
 <div class="fg-section"><div class="fg-section-title">Roteamento manual</div><div class="fg-routing"><select class="fg-select" id="fg-manual-user"><option value="">Selecione o destino</option>${opts}</select><button class="fg-btn fg-btn-primary" id="fg-route-manual">ROTEAR CASE</button><button class="fg-btn fg-btn-secondary" id="fg-open-case">ABRIR CASE</button></div><div id="fg-route-feedback" style="margin-top:8px;font-size:12px"></div></div>
 <div class="fg-section"><div class="fg-section-title">Emails do Case</div><div id="fg-emails"><div class="fg-email-loading">Carregando emails...</div></div></div>`;
+
+      detail.querySelector("#fg-save-priority").onclick = async function () {
+        const sel = detail.querySelector("#fg-manual-priority"), fb = detail.querySelector("#fg-priority-feedback");
+        const val = sel.value;
+        if (!val) { fb.style.color = "#b45309"; fb.textContent = "Selecione uma prioridade."; return; }
+        if (!item.caseId) { fb.style.color = "#b91c1c"; fb.textContent = "Case ID não disponível."; return; }
+        this.disabled = true; this.textContent = "SALVANDO...";
+        try {
+          await definirEmailPriority(item.caseId, val);
+          item.emailPriority = Number(val);
+          const cur = detail.querySelector("#fg-current-priority-value");
+          if (cur) cur.textContent = prioridadeLabel(val);
+          fb.style.color = "#047857"; fb.textContent = `✅ Prioridade atualizada para ${prioridadeLabel(val)}.`;
+          renderizarLista();
+        } catch (e) {
+          fb.style.color = "#b91c1c"; fb.textContent = "Erro ao salvar prioridade: " + (e?.message || String(e));
+        } finally {
+          this.disabled = false; this.textContent = "SALVAR PRIORIDADE";
+        }
+      };
 
       detail.querySelector("#fg-route-manual").onclick = async function () {
         const sel = detail.querySelector("#fg-manual-user"), fb = detail.querySelector("#fg-route-feedback");
@@ -576,6 +657,24 @@ ${item.erro ? `<div class="fg-section"><div class="fg-section-title">Erro</div><
       const q = `?$select=activityid,subject,description,createdon,senton,directioncode&$filter=_regardingobjectid_value eq ${caseId}&$orderby=createdon desc`;
       const r = await Xrm.WebApi.retrieveMultipleRecords("email", q, 50);
       const emails = r.entities || [];
+
+      if (emails.length > 0) {
+        for (let k = 0; k < emails.length; k += 15) {
+          const chunk = emails.slice(k, k + 15);
+          const filterIds = chunk.map(e => `_objectid_value eq ${e.activityid}`).join(" or ");
+          try {
+            const qAtt = `?$select=activitymimeattachmentid,_objectid_value,filename,mimetype,attachmentcontentid&$filter=${filterIds}`;
+            const rAtt = await Xrm.WebApi.retrieveMultipleRecords("activitymimeattachment", qAtt);
+            const anexosGerais = rAtt.entities || [];
+            chunk.forEach(e => {
+              e.attachmentsInfo = anexosGerais.filter(a => a._objectid_value && guid(a._objectid_value) === guid(e.activityid));
+            });
+          } catch (err) {
+            chunk.forEach(e => e.attachmentsInfo = []);
+          }
+        }
+      }
+
       cacheEmails.set(caseId, emails); return emails;
     }
 
@@ -645,14 +744,52 @@ ${item.erro ? `<div class="fg-section"><div class="fg-section-title">Erro</div><
         if (!emails.length) { box.innerHTML = '<div class="fg-email-loading">Nenhum email foi encontrado relacionado diretamente a este Case.</div>'; return; }
         box.innerHTML = emails.map((e, i) => {
           const dir = e.directioncode === true ? "Saída" : e.directioncode === false ? "Entrada" : "";
-          return `<div class="fg-email" data-i="${i}"><div class="fg-email-header"><div class="fg-email-subject">${eh(e.subject || "(Sem assunto)")}</div><div class="fg-email-date">${eh(dir)}${dir ? " • " : ""}${eh(dataBR(e.senton || e.createdon))} • clique para visualizar</div></div><div class="fg-email-content"><div class="fg-email-toolbar"><span class="fg-email-load-status">Email ainda não carregado</span><span>HTML original</span></div><iframe class="fg-email-frame" title="Visualização do email"></iframe></div></div>`;
+          const anexosVisiveis = (e.attachmentsInfo || []).filter(a => a.filename && !a.filename.startsWith("image0"));
+          const htmlAnexos = anexosVisiveis.length
+            ? `<div class="fg-att-badges">${anexosVisiveis.map(a => `<span class="fg-att-badge" data-attid="${eh(a.activitymimeattachmentid)}" title="Abrir / Baixar anexo">📎 ${eh(a.filename)}</span>`).join("")}</div>`
+            : "";
+          return `<div class="fg-email" data-i="${i}"><div class="fg-email-header"><div class="fg-email-subject">${eh(e.subject || "(Sem assunto)")}${htmlAnexos}</div><div class="fg-email-date">${eh(dir)}${dir ? " • " : ""}${eh(dataBR(e.senton || e.createdon))} • clique para visualizar</div></div><div class="fg-email-content"><div class="fg-email-toolbar"><span class="fg-email-load-status">Email ainda não carregado</span><span>HTML original</span></div><iframe class="fg-email-frame" title="Visualização do email"></iframe></div></div>`;
         }).join("");
+
         box.querySelectorAll(".fg-email").forEach((w) => {
           w.querySelector(".fg-email-header").onclick = async () => {
             const abrir = !w.classList.contains("open"); w.classList.toggle("open");
             if (abrir) await abrirEmail(w, emails[Number(w.dataset.i)]);
           };
         });
+
+        box.querySelectorAll(".fg-att-badge").forEach((badge) => {
+          badge.onclick = async (ev) => {
+            ev.stopPropagation();
+            const attId = badge.dataset.attid;
+            if (!attId) return;
+            const originalText = badge.innerHTML;
+            badge.innerHTML = "⏳ Aguarde...";
+            badge.style.pointerEvents = "none";
+            try {
+              const req = await Xrm.WebApi.retrieveRecord("activitymimeattachment", attId, "?$select=body,mimetype,filename");
+              if (!req.body) {
+                alert("O corpo deste anexo está vazio ou corrompido no CRM.");
+              } else {
+                const blob = base64ToBlob(req.body, req.mimetype || "application/octet-stream");
+                const blobUrl = URL.createObjectURL(blob);
+                const novaJanela = window.open(blobUrl, "_blank");
+                if (!novaJanela) {
+                  const a = document.createElement("a");
+                  a.href = blobUrl;
+                  a.download = req.filename || "anexo";
+                  a.click();
+                }
+              }
+            } catch (err) {
+              alert("Erro ao tentar baixar o anexo: " + (err?.message || String(err)));
+            } finally {
+              badge.innerHTML = originalText;
+              badge.style.pointerEvents = "auto";
+            }
+          };
+        });
+
         const primeiro = box.querySelector(".fg-email");
         if (primeiro) { primeiro.classList.add("open"); await abrirEmail(primeiro, emails[0]); }
       } catch (e) {
@@ -662,7 +799,16 @@ ${item.erro ? `<div class="fg-section"><div class="fg-section-title">Erro</div><
     }
 
     await carregarBaseSalva();
-    for(const item of resultados){if(!item.caseId)continue;try{item.caseReason=await obterCaseReason(item.caseId);}catch(e){console.warn("Case Reason não lido",item.ticket||item.caseId,e);}}
+    for (const item of resultados) {
+      if (!item.caseId) continue;
+      try {
+        const extras = await obterDadosExtrasCase(item.caseId);
+        item.caseReason = extras.caseReason;
+        item.emailPriority = extras.emailPriority;
+      } catch (e) {
+        console.warn("Dados extras não lidos", item.ticket || item.caseId, e);
+      }
+    }
     atualizarContadores(); renderizarLista();
     const primeiro = resultados.find((r) => r.status === "pendente") || resultados[0];
     if (primeiro) { selecionado = primeiro; renderizarLista(); renderizarDetalhes(primeiro); atualizarContadores(); }
