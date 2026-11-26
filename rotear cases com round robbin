@@ -4,7 +4,7 @@
     "335": { nome: "Lucimara Cecilio", id: "75a55739-7b8a-ec11-93b0-000d3a64a5f1" },
     "337": { nome: "Bruna Giovanini", id: "7fdc629c-144f-ed11-bba3-000d3aba36db" },
     "338": { nome: "Matheus Silva", id: "d46857cf-606e-f011-b4cc-6045bde0e1bb" },
-    "340": { nome: "Pablo Silva", id: "67f1a84e-7471-f011-b4cc-000d3adb1307" },
+    "340": { nome: "Pablo Silva", id: "67f1a84e-7471-f011-b4cc-6045bde0e1bb" },
     "346": { nome: "Cristiana Roseto", id: "df619db6-3a77-eb11-a812-000d3adb5d0d" }
   };
   const CRISTINA = { nome: "Cristina Alves", id: "2ad29448-518c-ef11-ac20-6045bddd9c93" };
@@ -21,12 +21,16 @@
   ];
   const prioridadeLabel = (v) => PRIORIDADES_EMAIL.find(p => Number(p.value) === Number(v))?.label || "Não definida";
 
-  const FILA_ATENDIMENTO = [LILIAN];
+  const FILA_ATENDIMENTO = [
+    LILIAN,
+    CRISTINA,
+    USUARIOS["346"] // Cristiana Roseto
+  ];
   const FILA_346_TEMP = [USUARIOS["338"], USUARIOS["340"]];
   const REGEX_COTACAO = /cotac|cotar|orcament|amostra|sample/i;
   const REGEX_ATENDIMENTO = /fup|follow|release|pedido|purchase|posicao de entrega|posição de entrega|nota fiscal|ordem de compra|\bnf\b|boleto/i;
-  const REGEX_LUCIMARA = /\b(weg|mwm|elgin)\b/i;
-  const REGEX_JOST = /\b(jost|gsi)\b/i;
+  const REGEX_LUCIMARA = /\b(weg|mwm|elgin|jacto|romi|brudden|cummins|mecalor)\b/i;
+  const REGEX_BRUNA = /\b(jost|gsi|knorr|henings|hennings|parker|vmi|malhe|mahle|bosch|danfos|danfoss|painco)\b/i;
   const USUARIOS_MANUAIS = [FILIPE, USUARIOS["335"], USUARIOS["337"], USUARIOS["338"], USUARIOS["340"], USUARIOS["346"], CRISTINA, LILIAN, JULIANA, DANILO, NICOLE];
 
   const resultados = [];
@@ -183,7 +187,7 @@ Detalhe: ${detalheRegra}
 Ticket: ${ticket || "-"}
 Território: ${codigo || "-"}
 Enviado por: ${executadoPor}
-Executado via: Script FG Case Router v5.7`;
+Executado via: Script FG Case Router v5.8`;
 
       const anotacao = {
         subject: tipo,
@@ -202,7 +206,7 @@ Executado via: Script FG Case Router v5.7`;
 
   try {
     console.clear();
-    console.log("[ROUTER] V5.7 iniciada (Auto-Prioridade High para High Potential Customer).");
+    console.log("[ROUTER] V5.8 iniciada (Rodízio 3x Atendimento + Palavras-chave Bruna/Lucimara).");
     const rows = await aguardarDynamicsEGrid();
     console.log(`[ROUTER] Iniciando processamento de ${rows.length} Case(s).`);
 
@@ -230,15 +234,19 @@ Executado via: Script FG Case Router v5.7`;
         }
 
         let usuario = null, regra = "", detalheRegra = "";
+        const matchBruna = tituloN.match(REGEX_BRUNA)?.[0]?.toUpperCase();
+        const matchLucimara = tituloN.match(REGEX_LUCIMARA)?.[0]?.toUpperCase();
 
         if (fila === "CBR Exports") {
           usuario = FILIPE; regra = "Fila CBR Exports"; detalheRegra = "Case identificado na fila CBR Exports.";
-        } else if (REGEX_JOST.test(tituloN)) {
-          usuario = USUARIOS["337"]; regra = "Cliente JOST"; detalheRegra = "Palavra-chave JOST/GSI identificada no título. Prioridade para Bruna Giovanini.";
-        } else if (codigo === "335" || REGEX_LUCIMARA.test(tituloN)) {
+        } else if (matchBruna) {
+          usuario = USUARIOS["337"];
+          regra = `Cliente ${matchBruna} (Bruna)`;
+          detalheRegra = `Palavra-chave ${matchBruna} identificada no título. Prioridade para Bruna Giovanini.`;
+        } else if (codigo === "335" || matchLucimara) {
           usuario = USUARIOS["335"];
-          regra = codigo === "335" ? "Território 335" : "Palavra-chave WEG/MWM/ELGIN";
-          detalheRegra = codigo === "335" ? "Case pertence ao território 335." : "Título contém WEG, MWM ou ELGIN.";
+          regra = codigo === "335" ? "Território 335" : `Cliente ${matchLucimara} (Lucimara)`;
+          detalheRegra = codigo === "335" ? "Case pertence ao território 335." : `Palavra-chave ${matchLucimara} identificada no título. Prioridade para Lucimara Cecilio.`;
         } else if (codigo === "337") {
           usuario = USUARIOS["337"]; regra = "Território 337"; detalheRegra = "Case pertence ao território 337.";
         } else if (REGEX_ATENDIMENTO.test(tituloN)) {
